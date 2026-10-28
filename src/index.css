@@ -1,0 +1,23 @@
+@import "tailwindcss";
+
+@layer utilities {
+  @media print {
+    body {
+      background-color: #ffffff !important;
+      color: #000000 !important;
+    }
+
+    header, footer, nav, button, .print\\:hidden {
+      display: none !important;
+    }
+
+    .print\\:block {
+      display: block !important;
+    }
+
+    @page {
+      size: A4;
+      margin: 12mm 15mm 15mm 15mm;
+    }
+  }
+}

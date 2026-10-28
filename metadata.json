@@ -1,0 +1,6 @@
+{
+  "name": "EMO Book Services - Corporate Claims & Receipt Auditor",
+  "description": "Expert accounts payable and corporate claims auditor for EMO Book Services Sdn Bhd. Extracts receipt data, itemizes expenditures in RM, maps items to official Chart of Account codes, and audits compliance.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
