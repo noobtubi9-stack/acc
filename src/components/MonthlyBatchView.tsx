@@ -13,7 +13,8 @@ import {
   Receipt,
   Layers,
   Sparkles,
-  Plus
+  Plus,
+  Database
 } from 'lucide-react';
 import { AuditedReceiptRecord, EMO_ACCOUNT_CODES } from '../types/claim';
 import { formatRM, formatDate, downloadJson, downloadCsv } from '../utils/formatters';
@@ -27,6 +28,7 @@ interface MonthlyBatchViewProps {
   onEditRecord: (record: AuditedReceiptRecord) => void;
   onDeleteRecord: (id: string) => void;
   onOpenPrintModal: () => void;
+  onOpenAccountingExportModal?: () => void;
   onNewAudit: () => void;
   onLoadSamples: () => void;
   onOpenBulkModal?: () => void;
@@ -43,6 +45,7 @@ export const MonthlyBatchView: React.FC<MonthlyBatchViewProps> = ({
   onEditRecord,
   onDeleteRecord,
   onOpenPrintModal,
+  onOpenAccountingExportModal,
   onNewAudit,
   onLoadSamples,
   onOpenBulkModal,
@@ -239,6 +242,21 @@ export const MonthlyBatchView: React.FC<MonthlyBatchViewProps> = ({
               <Download className="w-3.5 h-3.5 text-emerald-400" />
               Export CSV
             </button>
+            {onOpenAccountingExportModal && (
+              <button
+                onClick={onOpenAccountingExportModal}
+                disabled={records.length === 0}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 border transition ${
+                  records.length > 0
+                    ? 'bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-200 border-indigo-500/40'
+                    : 'bg-slate-900 text-slate-600 border-slate-800 cursor-not-allowed'
+                }`}
+                title="Export to AutoCount Accounting or SQL Accounting formats"
+              >
+                <Database className="w-3.5 h-3.5 text-indigo-400" />
+                <span>AutoCount / SQL</span>
+              </button>
+            )}
             <button
               onClick={handleExportBatchJson}
               disabled={records.length === 0}

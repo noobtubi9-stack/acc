@@ -22,7 +22,11 @@ import {
   ChevronDown,
   Layers,
   Save,
-  Check
+  Check,
+  Mail,
+  Send,
+  Wand2,
+  Sparkles
 } from 'lucide-react';
 import { 
   AuditedReceiptRecord, 
@@ -61,6 +65,8 @@ export const AdminClaimReviewModal: React.FC<AdminClaimReviewModalProps> = ({
   const [adminNote, setAdminNote] = useState<string>(record.adminAuditNote || '');
   const [rejectionReason, setRejectionReason] = useState<string>(record.rejectionReason || '');
   const [activeTab, setActiveTab] = useState<'review' | 'image' | 'audit_trail'>('review');
+  const [isNoticeModalOpen, setIsNoticeModalOpen] = useState<boolean>(false);
+  const [noticeSent, setNoticeSent] = useState<boolean>(false);
 
   // Thermal image controls
   const [zoomLevel, setZoomLevel] = useState<number>(1);
@@ -99,6 +105,127 @@ export const AdminClaimReviewModal: React.FC<AdminClaimReviewModalProps> = ({
     }
     const updated = items.filter((_, idx) => idx !== index);
     setItems(updated);
+  };
+
+  // Smart COA reclassification suggester based on EMO Book Services accounting rules
+  const getSmartCoaSuggestion = (text: string, merchant: string = ''): string | null => {
+    const combined = `${merchant} ${text}`.toLowerCase();
+    
+    // Resale books
+    if (combined.includes('popular') || combined.includes('kinokuniya') || combined.includes('mph') || combined.includes('resell book') || combined.includes('novel') || combined.includes('textbook') || combined.includes('buku')) {
+      return '400-00';
+    }
+    // Fuel
+    if (combined.includes('ron95') || combined.includes('ron97') || combined.includes('diesel') || combined.includes('primax') || combined.includes('fuelsave') || combined.includes('petronas') || combined.includes('shell') || combined.includes('bhp') || combined.includes('caltex') || combined.includes('petron') || combined.includes('minyak')) {
+      return '920-0000';
+    }
+    // Parking
+    if (combined.includes('parking') || combined.includes('smart selangor') || combined.includes('touch n go parking') || combined.includes('valet') || combined.includes('tempat letak kereta')) {
+      return '921-0001';
+    }
+    // Toll
+    if (combined.includes('toll') || combined.includes('plus express') || combined.includes('rfid') || combined.includes('touch \'n go reload') || combined.includes('tng reload') || combined.includes('tol')) {
+      return '921-0002';
+    }
+    // Grab / Public Transport
+    if (combined.includes('grab') || combined.includes('airasia ride') || combined.includes('mrt') || combined.includes('lrt') || combined.includes('monorail') || combined.includes('ktm') || combined.includes('rapidkl') || combined.includes('teksi')) {
+      return '905-0001';
+    }
+    // Interstate Travel / Flight
+    if (combined.includes('flight') || combined.includes('airasia flight') || combined.includes('malaysia airlines') || combined.includes('ets') || combined.includes('aeroline') || combined.includes('interstate bus')) {
+      return '905-0002';
+    }
+    // Accommodation
+    if (combined.includes('hotel') || combined.includes('inn') || combined.includes('resort') || combined.includes('lodge') || combined.includes('stay') || combined.includes('homestay') || combined.includes('airbnb')) {
+      return '923-0000';
+    }
+    // Courier
+    if (combined.includes('gdex') || combined.includes('j&t') || combined.includes('dhl') || combined.includes('ninja van') || combined.includes('pos laju') || combined.includes('line clear') || combined.includes('city-link')) {
+      return '928-0000';
+    }
+    // Postal & Stamp
+    if (combined.includes('stamp') || combined.includes('setem') || combined.includes('pos malaysia stamp') || combined.includes('registered post')) {
+      return '912-0000';
+    }
+    // Packaging Carton Box
+    if (combined.includes('carton') || combined.includes('box size') || combined.includes('shipping box') || combined.includes('kotak')) {
+      return '617-0001';
+    }
+    // Packaging Plastic Bag
+    if (combined.includes('plastic bag') || combined.includes('carrier bag') || combined.includes('poly mailer') || combined.includes('beg plastik')) {
+      return '617-0002';
+    }
+    // Packaging Bubble wrap / Tape
+    if (combined.includes('bubble wrap') || combined.includes('opp tape') || combined.includes('stretch film') || combined.includes('fragile sticker')) {
+      return '617-0003';
+    }
+    // Staff Pantry / Welfare
+    if (combined.includes('nescafe') || combined.includes('coffee') || combined.includes('tea') || combined.includes('milo') || combined.includes('biscuit') || combined.includes('pantry') || combined.includes('first aid') || combined.includes('panadol') || combined.includes('kopi')) {
+      return '926-0000';
+    }
+    // Entertainment / Business Dining
+    if (combined.includes('restaurant') || combined.includes('cafe') || combined.includes('lunch') || combined.includes('dinner') || combined.includes('dining') || combined.includes('meeting refreshment') || combined.includes('jamuan')) {
+      return '919-0000';
+    }
+    // Stationery
+    if (combined.includes('stationery') || combined.includes('a4 paper') || combined.includes('pen') || combined.includes('pencil') || combined.includes('file') || combined.includes('binder') || combined.includes('stapler') || combined.includes('kertas')) {
+      return '910-0000';
+    }
+    // IT Hardware
+    if (combined.includes('mouse') || combined.includes('keyboard') || combined.includes('ssd') || combined.includes('ram') || combined.includes('printer cable') || combined.includes('toner') || combined.includes('cartridge')) {
+      return '959-0001';
+    }
+    // Medical
+    if (combined.includes('klinik') || combined.includes('clinic') || combined.includes('doctor') || combined.includes('pharmacy') || combined.includes('farmasi') || combined.includes('ubat')) {
+      return '940-';
+    }
+    // Lalamove / Dispatch Delivery
+    if (combined.includes('lalamove') || combined.includes('borzo') || combined.includes('dispatch') || combined.includes('runner')) {
+      return '952-0001';
+    }
+    return null;
+  };
+
+  // 1-Click Auto Reclassify All Items
+  const handleAutoReclassifyAll = () => {
+    let reclassifiedCount = 0;
+    const updated = items.map(item => {
+      const suggestion = getSmartCoaSuggestion(item.details, receiptInfo.merchant_name);
+      if (suggestion && suggestion !== item.code) {
+        reclassifiedCount++;
+        return {
+          ...item,
+          code: suggestion,
+          remark: item.remark ? `${item.remark} (Auto-reclassed)` : 'Auto-reclassed to EMO COA',
+        };
+      }
+      return item;
+    });
+    setItems(updated);
+    if (reclassifiedCount > 0) {
+      setAdminNote(prev => `${prev ? prev + '. ' : ''}Auto-reclassified ${reclassifiedCount} item(s) to match EMO official account codes.`);
+    }
+  };
+
+  // 1-Click Rule 2 Fix: Auto-Separate Petrol & Mart Snacks
+  const handleApplyRule2FuelSplit = () => {
+    let modified = false;
+    const updated = items.map(item => {
+      const text = item.details.toLowerCase();
+      if ((item.code === '920-0000' || item.code === 'OTHERS') && (text.includes('snack') || text.includes('water') || text.includes('coffee') || text.includes('biscuit') || text.includes('drink') || text.includes('bread') || text.includes('mesra') || text.includes('select'))) {
+        modified = true;
+        return {
+          ...item,
+          code: '926-0000',
+          remark: 'Rule 2: Separated mart convenience purchase from fuel receipt (926-0000 Staff Welfare).',
+        };
+      }
+      return item;
+    });
+    if (modified) {
+      setItems(updated);
+      setAdminNote(prev => `${prev ? prev + '. ' : ''}Applied Rule 2: Separated convenience items from vehicle fuel.`);
+    }
   };
 
   // One-click Verification
@@ -336,13 +463,33 @@ export const AdminClaimReviewModal: React.FC<AdminClaimReviewModalProps> = ({
                     </span>
                     <span className="text-xs text-slate-400">({items.length} entries)</span>
                   </div>
-                  <button
-                    onClick={handleAddItem}
-                    className="px-2.5 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-lg flex items-center gap-1 shadow-sm transition"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Add Item</span>
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={handleAutoReclassifyAll}
+                      className="px-2.5 py-1 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 font-semibold text-xs rounded-lg flex items-center gap-1.5 transition"
+                      title="Analyze item details and automatically suggest exact EMO COA codes"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+                      <span>Smart Reclassify</span>
+                    </button>
+
+                    <button
+                      onClick={handleApplyRule2FuelSplit}
+                      className="px-2.5 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 font-semibold text-xs rounded-lg flex items-center gap-1.5 transition"
+                      title="Enforce Rule 2: Separate mart snacks/drinks from vehicle fuel on petrol receipts"
+                    >
+                      <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Rule 2 Fuel/Snack Split</span>
+                    </button>
+
+                    <button
+                      onClick={handleAddItem}
+                      className="px-2.5 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-lg flex items-center gap-1 shadow-sm transition"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Add Item</span>
+                    </button>
+                  </div>
                 </div>
 
                 <div className="overflow-x-auto">
@@ -715,6 +862,15 @@ export const AdminClaimReviewModal: React.FC<AdminClaimReviewModalProps> = ({
 
           <div className="flex items-center gap-2">
             <button
+              onClick={() => setIsNoticeModalOpen(true)}
+              className="px-3.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-semibold text-xs flex items-center gap-1.5 transition"
+              title="Send audit notice / feedback to staff claimant email"
+            >
+              <Mail className="w-4 h-4 text-amber-400" />
+              <span>Email Staff</span>
+            </button>
+
+            <button
               onClick={handleVerify}
               className="px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-sm transition"
               title="Reconcile and sign off this claim"
@@ -742,6 +898,90 @@ export const AdminClaimReviewModal: React.FC<AdminClaimReviewModalProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Staff Audit Notice Email Modal */}
+      {isNoticeModalOpen && (
+        <div className="fixed inset-0 z-60 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-lg w-full p-5 space-y-4 shadow-2xl animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <Mail className="w-5 h-5 text-amber-400" />
+                <h4 className="font-bold text-white text-sm">
+                  Send Staff Audit Notice
+                </h4>
+              </div>
+              <button
+                onClick={() => setIsNoticeModalOpen(false)}
+                className="text-slate-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 space-y-1.5">
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Recipient Email:</span>
+                  <span className="font-mono text-amber-300 font-bold">{record.claimantEmail || 'haziq@emobooks.com'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Staff Name &amp; ID:</span>
+                  <span className="text-slate-200">{record.claimantName} ({record.claimantStaffId})</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Claim Amount:</span>
+                  <span className="font-mono text-white font-bold">{formatRM(roundedSum)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Current Status:</span>
+                  <span className="font-semibold text-emerald-400 uppercase">{status}</span>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[11px] font-bold text-slate-400 uppercase block mb-1">
+                  Message to Claimant
+                </label>
+                <textarea
+                  rows={4}
+                  defaultValue={`Dear ${record.claimantName},\n\nYour monthly claim for ${record.claimMonth} (${formatRM(roundedSum)}) has been reviewed by Accounts Admin (${adminEmail}).\n\nAudit Status: ${status.toUpperCase()}.\nNotes: ${adminNote || 'All items reconciled and approved for processing.'}\n\nAccounts Payable\nEMO Book Services Sdn Bhd`}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-xs text-slate-200 focus:border-amber-400 focus:outline-none"
+                />
+              </div>
+
+              {noticeSent ? (
+                <div className="p-3 bg-emerald-950/40 border border-emerald-500/40 text-emerald-300 rounded-xl flex items-center gap-2">
+                  <Check className="w-4 h-4 text-emerald-400" />
+                  <span>Audit notification sent to {record.claimantEmail || 'employee'}!</span>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+              <button
+                onClick={() => setIsNoticeModalOpen(false)}
+                className="px-3.5 py-1.5 rounded-lg text-slate-400 hover:text-white text-xs font-semibold"
+              >
+                Close
+              </button>
+              <button
+                onClick={() => {
+                  setNoticeSent(true);
+                  setTimeout(() => {
+                    setIsNoticeModalOpen(false);
+                    setNoticeSent(false);
+                  }, 1500);
+                }}
+                className="px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 shadow-md shadow-amber-500/20"
+              >
+                <Send className="w-3.5 h-3.5" />
+                <span>Dispatch Notice</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
+

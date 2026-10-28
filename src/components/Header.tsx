@@ -13,7 +13,9 @@ import {
   Sparkles,
   ShieldCheck,
   Key,
-  User
+  User,
+  LogOut,
+  LogIn
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -32,6 +34,8 @@ interface HeaderProps {
   pendingAdminCount?: number;
   currentUserEmail?: string;
   currentRole?: 'staff' | 'accounts_admin';
+  isAuthenticated?: boolean;
+  onLogout?: () => void;
   onOpenAuthModal?: () => void;
   onOpenPrintModal: () => void;
   onOpenCodebook: () => void;
@@ -55,6 +59,8 @@ export const Header: React.FC<HeaderProps> = ({
   pendingAdminCount = 0,
   currentUserEmail = 'emoacc2@gmail.com',
   currentRole = 'accounts_admin',
+  isAuthenticated = true,
+  onLogout,
   onOpenAuthModal,
   onOpenPrintModal,
   onOpenCodebook,
@@ -92,27 +98,70 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Right Side: Identity Switcher & Claimant Controls */}
           <div className="flex flex-wrap items-center gap-2 sm:gap-3">
             
-            {/* Identity Switcher Button */}
-            {onOpenAuthModal && (
+            {/* When Authenticated: Profile Badge & Logout Button */}
+            {isAuthenticated ? (
+              <div className="flex items-center gap-2">
+                {onOpenAuthModal && (
+                  <button
+                    onClick={onOpenAuthModal}
+                    className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700/80 border border-slate-700/80 text-xs transition group shadow-sm"
+                    title="EMO Corporate Authentication & Identity Switcher"
+                  >
+                    <div className="relative">
+                      <div className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs ${
+                        currentRole === 'accounts_admin' 
+                          ? 'bg-amber-500 text-slate-950 shadow-sm shadow-amber-500/20' 
+                          : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
+                      }`}>
+                        {currentRole === 'accounts_admin' ? (
+                          <ShieldCheck className="w-4 h-4 text-slate-950" />
+                        ) : (
+                          <User className="w-4 h-4 text-emerald-400" />
+                        )}
+                      </div>
+                      <span className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full ring-2 ring-slate-900 ${
+                        currentRole === 'accounts_admin' ? 'bg-amber-400' : 'bg-emerald-400'
+                      }`} />
+                    </div>
+                    <div className="flex flex-col text-left">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-bold text-white max-w-[130px] truncate">{currentUserEmail}</span>
+                        <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded ${
+                          currentRole === 'accounts_admin'
+                            ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                            : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                        }`}>
+                          {currentRole === 'accounts_admin' ? 'Admin' : 'Staff'}
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-slate-400 group-hover:text-amber-400 flex items-center gap-1 transition">
+                        <Key className="w-2.5 h-2.5" /> Portal Auth &bull; Switch
+                      </span>
+                    </div>
+                  </button>
+                )}
+
+                {/* Prominent Logout Button */}
+                {onLogout && (
+                  <button
+                    onClick={onLogout}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 hover:text-rose-200 border border-rose-500/30 text-xs font-bold transition shadow-sm group"
+                    title="Sign Out / Logout of current workstation session"
+                  >
+                    <LogOut className="w-3.5 h-3.5 text-rose-400 group-hover:-translate-x-0.5 transition-transform" />
+                    <span>Logout</span>
+                  </button>
+                )}
+              </div>
+            ) : (
+              /* When Unauthenticated: Prominent Login / Sign In Button */
               <button
                 onClick={onOpenAuthModal}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700/80 border border-slate-700/80 text-xs transition"
-                title="Switch User / Role"
+                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-slate-950 text-xs font-extrabold shadow-lg shadow-amber-500/25 transition-all transform hover:scale-[1.02]"
+                title="Sign In to EMO Book Services Corporate Portal"
               >
-                <div className={`w-2 h-2 rounded-full ${currentRole === 'accounts_admin' ? 'bg-amber-400' : 'bg-emerald-400'}`}></div>
-                <div className="flex flex-col text-left">
-                  <div className="flex items-center gap-1.5">
-                    <span className="font-bold text-white max-w-[140px] truncate">{currentUserEmail}</span>
-                    <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded ${
-                      currentRole === 'accounts_admin'
-                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                        : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                    }`}>
-                      {currentRole === 'accounts_admin' ? 'Admin' : 'Staff'}
-                    </span>
-                  </div>
-                  <span className="text-[10px] text-slate-400">Switch user / role</span>
-                </div>
+                <LogIn className="w-4 h-4 text-slate-950" />
+                <span>Login / Sign In</span>
               </button>
             )}
 
@@ -270,6 +319,29 @@ export const Header: React.FC<HeaderProps> = ({
             >
               <HelpCircle className="w-4 h-4" />
             </button>
+
+            <div className="h-4 w-px bg-slate-800 hidden sm:block" />
+
+            {/* Sub-nav quick Logout/Login */}
+            {isAuthenticated ? (
+              <button
+                onClick={onLogout}
+                className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-md text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/30 text-xs font-semibold transition"
+                title="Sign out of EMO Book Services workstation"
+              >
+                <LogOut className="w-3.5 h-3.5 text-rose-400" />
+                <span>Logout</span>
+              </button>
+            ) : (
+              <button
+                onClick={onOpenAuthModal}
+                className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold transition shadow-sm"
+                title="Sign In to EMO Book Services"
+              >
+                <LogIn className="w-3.5 h-3.5" />
+                <span>Login</span>
+              </button>
+            )}
           </div>
 
         </div>

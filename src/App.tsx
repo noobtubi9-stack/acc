@@ -19,7 +19,9 @@ import {
   ArrowRight,
   ShieldCheck,
   Building,
-  Info
+  Info,
+  LogIn,
+  LogOut
 } from 'lucide-react';
 import { 
   AuditResult, 
@@ -48,6 +50,7 @@ import { AdminDashboard } from './components/AdminDashboard';
 import { AdminClaimReviewModal } from './components/AdminClaimReviewModal';
 import { StaffRemovalModal } from './components/StaffRemovalModal';
 import { AuthRoleSwitcherModal } from './components/AuthRoleSwitcherModal';
+import { AccountingExportModal } from './components/AccountingExportModal';
 
 const STORAGE_KEY = 'emo_book_services_claims_records_v1';
 
@@ -57,6 +60,7 @@ export default function App() {
   const [staffRoster, setStaffRoster] = useState<StaffProfile[]>(() => loadStaffRoster());
   const [currentUserEmail, setCurrentUserEmail] = useState<string>('emoacc2@gmail.com');
   const [currentRole, setCurrentRole] = useState<'staff' | 'accounts_admin'>('accounts_admin');
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(true);
 
   // Active Claimant details for scanning receipts
   const [staffName, setStaffName] = useState<string>('Mohd Haziq bin Ismail');
@@ -92,6 +96,7 @@ export default function App() {
   const [isReviewModalOpen, setIsReviewModalOpen] = useState<boolean>(false);
   const [isStaffRemovalModalOpen, setIsStaffRemovalModalOpen] = useState<boolean>(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
+  const [isAccountingExportModalOpen, setIsAccountingExportModalOpen] = useState<boolean>(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -112,6 +117,7 @@ export default function App() {
         setIsReviewModalOpen(false);
         setIsStaffRemovalModalOpen(false);
         setIsAuthModalOpen(false);
+        setIsAccountingExportModalOpen(false);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -218,9 +224,17 @@ export default function App() {
     const updated = [...staffRoster, newStaff];
     setStaffRoster(updated);
     saveStaffRoster(updated);
+    handleSelectUser(newStaff);
+  };
+
+  const handleLogout = () => {
+    setIsAuthenticated(false);
+    setCurrentUserEmail('');
+    setIsAuthModalOpen(true);
   };
 
   const handleSelectUser = (profile: StaffProfile) => {
+    setIsAuthenticated(true);
     setCurrentUserEmail(profile.email);
     setCurrentRole(profile.role);
     if (profile.role === 'accounts_admin') {
@@ -234,6 +248,7 @@ export default function App() {
   };
 
   const handleCustomEmailLogin = (email: string) => {
+    setIsAuthenticated(true);
     setCurrentUserEmail(email);
     const matched = staffRoster.find(s => s.email.toLowerCase() === email.toLowerCase());
     if (matched) {
@@ -549,6 +564,8 @@ export default function App() {
         pendingAdminCount={batchRecords.filter(c => c.status === 'needs_review' || c.status === 'flagged').length}
         currentUserEmail={currentUserEmail}
         currentRole={currentRole}
+        isAuthenticated={isAuthenticated}
+        onLogout={handleLogout}
         onOpenAuthModal={() => setIsAuthModalOpen(true)}
         onOpenPrintModal={() => setIsPrintModalOpen(true)}
         onOpenCodebook={() => setIsCodebookOpen(true)}
@@ -562,6 +579,38 @@ export default function App() {
       {/* Main Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-5">
         
+        {/* Signed Out Corporate Banner */}
+        {!isAuthenticated && (
+          <div className="mb-6 p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-slate-900 via-amber-950/20 to-slate-900 border border-amber-500/40 shadow-xl flex flex-col md:flex-row items-center justify-between gap-4 animate-in fade-in duration-200">
+            <div className="flex items-center gap-3.5">
+              <div className="w-12 h-12 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-400 flex items-center justify-center flex-shrink-0 shadow-inner">
+                <ShieldCheck className="w-6 h-6 text-amber-400" />
+              </div>
+              <div>
+                <h2 className="text-sm sm:text-base font-bold text-white flex items-center gap-2">
+                  <span>EMO Workstation Signed Out</span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-amber-300 border border-amber-500/30 font-semibold">
+                    Guest Mode
+                  </span>
+                </h2>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Sign in with <code className="text-amber-400 font-bold">emoacc2@gmail.com</code> for Accounts Admin authority, or your employee email to audit and submit monthly claims.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2.5 flex-shrink-0">
+              <button
+                onClick={() => setIsAuthModalOpen(true)}
+                className="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-slate-950 text-xs font-black shadow-lg shadow-amber-500/25 flex items-center gap-2 transition transform hover:scale-[1.02]"
+              >
+                <LogIn className="w-4 h-4 text-slate-950" />
+                <span>Sign In to EMO Portal</span>
+              </button>
+            </div>
+          </div>
+        )}
+        
         {/* TAB 0: ACCOUNTS ADMIN DASHBOARD */}
         {currentTab === 'admin' && (
           <AdminDashboard
@@ -573,6 +622,7 @@ export default function App() {
               setIsReviewModalOpen(true);
             }}
             onOpenStaffRemovalModal={() => setIsStaffRemovalModalOpen(true)}
+            onOpenAccountingExportModal={() => setIsAccountingExportModalOpen(true)}
             onVerifyRecord={(record) => {
               const updated: AuditedReceiptRecord = {
                 ...record,
@@ -775,6 +825,7 @@ export default function App() {
             }}
             onDeleteRecord={handleDeleteRecord}
             onOpenPrintModal={() => setIsPrintModalOpen(true)}
+            onOpenAccountingExportModal={() => setIsAccountingExportModalOpen(true)}
             onNewAudit={resetWorkspace}
             onLoadSamples={initInitialSamples}
             onOpenBulkModal={() => setIsBulkModalOpen(true)}
@@ -894,6 +945,15 @@ export default function App() {
         staffRoster={staffRoster}
         onSelectUser={handleSelectUser}
         onCustomEmailLogin={handleCustomEmailLogin}
+        onRegisterStaff={handleAddStaff}
+      />
+
+      {/* Accounting Software Export Modal (AutoCount / SQL Accounting) */}
+      <AccountingExportModal
+        isOpen={isAccountingExportModalOpen}
+        onClose={() => setIsAccountingExportModalOpen(false)}
+        claims={batchRecords}
+        claimMonth={claimMonth}
       />
 
       {/* Footer */}

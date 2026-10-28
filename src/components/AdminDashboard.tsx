@@ -22,7 +22,8 @@ import {
   PlusCircle,
   Sparkles,
   ChevronRight,
-  ExternalLink
+  ExternalLink,
+  Database
 } from 'lucide-react';
 import { 
   AuditedReceiptRecord, 
@@ -37,6 +38,7 @@ interface AdminDashboardProps {
   adminEmail: string;
   onOpenReviewModal: (record: AuditedReceiptRecord) => void;
   onOpenStaffRemovalModal: () => void;
+  onOpenAccountingExportModal?: () => void;
   onVerifyRecord: (record: AuditedReceiptRecord) => void;
   onDeleteRecord: (id: string) => void;
   onPrintRecord: (record: AuditedReceiptRecord) => void;
@@ -49,6 +51,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   adminEmail,
   onOpenReviewModal,
   onOpenStaffRemovalModal,
+  onOpenAccountingExportModal,
   onVerifyRecord,
   onDeleteRecord,
   onPrintRecord,
@@ -138,6 +141,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {onOpenAccountingExportModal && (
+            <button
+              onClick={onOpenAccountingExportModal}
+              className="px-3.5 py-2 rounded-xl bg-indigo-600/25 hover:bg-indigo-600/40 text-indigo-200 border border-indigo-500/40 text-xs font-semibold flex items-center gap-1.5 transition shadow-sm"
+              title="Export verified claims to AutoCount Accounting or SQL Accounting formats"
+            >
+              <Database className="w-4 h-4 text-indigo-400" />
+              <span>Accounting Export (AutoCount/SQL)</span>
+            </button>
+          )}
+
           <button
             onClick={onOpenStaffRemovalModal}
             className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold flex items-center gap-1.5 transition"
