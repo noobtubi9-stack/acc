@@ -243,18 +243,24 @@ export const EMO_ACCOUNT_CODES: COACodeDefinition[] = [
   }
 ];
 
-export interface ReceiptSummary {
+export interface ReceiptInfo {
   merchant_name: string;
   merchant_ssm_or_tax_no: string | null;
-  invoice_receipt_no: string | null;
+  receipt_no?: string | null;
   date: string;
-  currency: string;
-  receipt_subtotal: number;
-  tax_sst: number;
-  receipt_grand_total: number;
+  total_amount_rm?: number;
+  currency?: string;
+  // Extended details if available
+  receipt_subtotal?: number;
+  tax_sst?: number;
+  // Backward compatibility alias
+  invoice_receipt_no?: string | null;
+  receipt_grand_total?: number;
 }
 
-export interface ClaimEntry {
+export type ReceiptSummary = ReceiptInfo;
+
+export interface ClaimItem {
   id?: string;
   code: string;
   details: string;
@@ -262,11 +268,31 @@ export interface ClaimEntry {
   remark: string;
 }
 
+export type ClaimEntry = ClaimItem;
+
 export interface AuditResult {
-  receipt_summary: ReceiptSummary;
-  claim_entries: ClaimEntry[];
+  receipt_info: ReceiptInfo;
+  claim_items: ClaimItem[];
   claim_total_rm: number;
-  audit_flags: string[];
+  audit_notes: string[];
+  // Backwards compatibility aliases
+  receipt_summary?: ReceiptInfo;
+  claim_entries?: ClaimItem[];
+  audit_flags?: string[];
+}
+
+export type ClaimStatus = 'verified' | 'needs_review' | 'flagged' | 'approved' | 'rejected';
+
+export interface StaffProfile {
+  id: string;
+  name: string;
+  staffId: string;
+  email: string;
+  department: string;
+  role: 'staff' | 'accounts_admin';
+  active: boolean;
+  avatarColor?: string;
+  joinedDate?: string;
 }
 
 export interface AuditedReceiptRecord {
@@ -274,12 +300,64 @@ export interface AuditedReceiptRecord {
   createdAt: string;
   claimantName: string;
   claimantStaffId: string;
+  claimantEmail?: string;
   department: string;
   claimMonth: string;
   imagePreviewUrl: string;
   fileName: string;
   fileSizeBytes: number;
-  status: 'verified' | 'needs_review' | 'flagged';
+  status: ClaimStatus;
   auditResult: AuditResult;
   notes?: string;
+  verifiedBy?: string;
+  verifiedAt?: string;
+  approvedBy?: string;
+  approvedAt?: string;
+  adminAuditNote?: string;
+  rejectionReason?: string;
+}
+
+/**
+ * Normalizes an AuditResult object to guarantee receipt_info, claim_items, and audit_notes
+ */
+export function normalizeAuditResult(raw: any): AuditResult {
+  const receipt_info: ReceiptInfo = {
+    merchant_name: raw?.receipt_info?.merchant_name || raw?.receipt_summary?.merchant_name || 'Unknown Merchant',
+    merchant_ssm_or_tax_no: raw?.receipt_info?.merchant_ssm_or_tax_no ?? raw?.receipt_summary?.merchant_ssm_or_tax_no ?? null,
+    receipt_no: raw?.receipt_info?.receipt_no || raw?.receipt_summary?.invoice_receipt_no || raw?.receipt_summary?.receipt_no || null,
+    date: raw?.receipt_info?.date || raw?.receipt_summary?.date || new Date().toISOString().slice(0, 10),
+    total_amount_rm: Number(raw?.receipt_info?.total_amount_rm ?? raw?.receipt_summary?.receipt_grand_total ?? raw?.receipt_summary?.total_amount_rm ?? 0),
+    receipt_subtotal: Number(raw?.receipt_info?.receipt_subtotal ?? raw?.receipt_summary?.receipt_subtotal ?? 0),
+    tax_sst: Number(raw?.receipt_info?.tax_sst ?? raw?.receipt_summary?.tax_sst ?? 0),
+  };
+  receipt_info.invoice_receipt_no = receipt_info.receipt_no;
+  receipt_info.receipt_grand_total = receipt_info.total_amount_rm;
+
+  const rawItems = raw?.claim_items || raw?.claim_entries || [];
+  const claim_items: ClaimItem[] = Array.isArray(rawItems)
+    ? rawItems.map((item: any, idx: number) => ({
+        id: item.id || `item-${idx}-${Date.now()}`,
+        code: item.code || 'OTHERS',
+        details: item.details || 'General expenditure',
+        amount_rm: Number(item.amount_rm || 0),
+        remark: item.remark || '',
+      }))
+    : [];
+
+  const rawNotes = raw?.audit_notes || raw?.audit_flags || [];
+  const audit_notes: string[] = Array.isArray(rawNotes) ? rawNotes : [];
+
+  const calculatedTotal = claim_items.reduce((sum, item) => sum + item.amount_rm, 0);
+  const claim_total_rm = Math.round(Number(raw?.claim_total_rm ?? calculatedTotal) * 100) / 100;
+
+  return {
+    receipt_info,
+    claim_items,
+    claim_total_rm,
+    audit_notes,
+    // Aliases for compatibility
+    receipt_summary: receipt_info,
+    claim_entries: claim_items,
+    audit_flags: audit_notes,
+  };
 }

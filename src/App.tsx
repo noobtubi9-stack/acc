@@ -25,9 +25,13 @@ import {
   AuditResult, 
   AuditedReceiptRecord, 
   ClaimEntry, 
-  ReceiptSummary 
+  ReceiptSummary,
+  StaffProfile,
+  ClaimStatus,
+  normalizeAuditResult
 } from './types/claim';
 import { SAMPLE_RECEIPTS, SampleReceipt } from './data/sampleReceipts';
+import { DEFAULT_STAFF_ROSTER, loadStaffRoster, saveStaffRoster } from './data/staffRoster';
 import { formatRM, downloadJson, downloadCsv } from './utils/formatters';
 import { Header } from './components/Header';
 import { ReceiptViewer } from './components/ReceiptViewer';
@@ -38,12 +42,23 @@ import { OfficialVoucherModal } from './components/OfficialVoucherModal';
 import { COAExplorerModal } from './components/COAExplorerModal';
 import { CameraCaptureModal } from './components/CameraCaptureModal';
 import { SampleReceiptsModal } from './components/SampleReceiptsModal';
+import { BulkUploadModal } from './components/BulkUploadModal';
+import { SystemPromptModal } from './components/SystemPromptModal';
+import { AdminDashboard } from './components/AdminDashboard';
+import { AdminClaimReviewModal } from './components/AdminClaimReviewModal';
+import { StaffRemovalModal } from './components/StaffRemovalModal';
+import { AuthRoleSwitcherModal } from './components/AuthRoleSwitcherModal';
 
 const STORAGE_KEY = 'emo_book_services_claims_records_v1';
 
 export default function App() {
   // Navigation & Profile State
-  const [currentTab, setCurrentTab] = useState<'audit' | 'batch' | 'codebook'>('audit');
+  const [currentTab, setCurrentTab] = useState<'audit' | 'batch' | 'admin' | 'codebook'>('admin');
+  const [staffRoster, setStaffRoster] = useState<StaffProfile[]>(() => loadStaffRoster());
+  const [currentUserEmail, setCurrentUserEmail] = useState<string>('emoacc2@gmail.com');
+  const [currentRole, setCurrentRole] = useState<'staff' | 'accounts_admin'>('accounts_admin');
+
+  // Active Claimant details for scanning receipts
   const [staffName, setStaffName] = useState<string>('Mohd Haziq bin Ismail');
   const [staffId, setStaffId] = useState<string>('EMO-STF-084');
   const [department, setDepartment] = useState<string>('Sales & Marketing');
@@ -69,8 +84,39 @@ export default function App() {
   const [isCodebookOpen, setIsCodebookOpen] = useState<boolean>(false);
   const [isCameraOpen, setIsCameraOpen] = useState<boolean>(false);
   const [isSampleModalOpen, setIsSampleModalOpen] = useState<boolean>(false);
+  const [isBulkModalOpen, setIsBulkModalOpen] = useState<boolean>(false);
+  const [isPromptModalOpen, setIsPromptModalOpen] = useState<boolean>(false);
+
+  // Accounts Admin Modals
+  const [reviewRecord, setReviewRecord] = useState<AuditedReceiptRecord | null>(null);
+  const [isReviewModalOpen, setIsReviewModalOpen] = useState<boolean>(false);
+  const [isStaffRemovalModalOpen, setIsStaffRemovalModalOpen] = useState<boolean>(false);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Keyboard shortcuts listener
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        handleSaveToBatch();
+      }
+      if (e.key === 'Escape') {
+        setIsPrintModalOpen(false);
+        setIsCodebookOpen(false);
+        setIsCameraOpen(false);
+        setIsSampleModalOpen(false);
+        setIsBulkModalOpen(false);
+        setIsPromptModalOpen(false);
+        setIsReviewModalOpen(false);
+        setIsStaffRemovalModalOpen(false);
+        setIsAuthModalOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [auditResult, activeRecordId, imageSrc, fileName, claimantNotes]);
 
   // Load saved batch or seed initial samples on startup
   useEffect(() => {
@@ -79,9 +125,13 @@ export default function App() {
       if (stored) {
         const parsed = JSON.parse(stored);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          setBatchRecords(parsed);
+          const normalizedBatch = parsed.map(p => ({
+            ...p,
+            auditResult: normalizeAuditResult(p.auditResult),
+          }));
+          setBatchRecords(normalizedBatch);
           // Set first record as active
-          loadRecordIntoWorkspace(parsed[0]);
+          loadRecordIntoWorkspace(normalizedBatch[0]);
           return;
         }
       }
@@ -104,22 +154,97 @@ export default function App() {
   };
 
   const initInitialSamples = () => {
-    const seeded: AuditedReceiptRecord[] = SAMPLE_RECEIPTS.map((s, idx) => ({
-      id: `seeded-${s.id}-${idx}`,
-      createdAt: new Date().toISOString(),
-      claimantName: staffName,
-      claimantStaffId: staffId,
-      department: department,
-      claimMonth: claimMonth,
-      imagePreviewUrl: s.imageSvg,
-      fileName: `${s.name.replace(/\s+/g, '_')}.svg`,
-      fileSizeBytes: 2048,
-      status: 'verified',
-      auditResult: s.expectedAudit,
-      notes: s.description,
-    }));
+    // Seed multi-staff claims matching the staff roster for a realistic admin dashboard
+    const staffAssignments = [
+      { name: 'Mohd Haziq bin Ismail', staffId: 'EMO-STF-084', dept: 'Sales & Marketing', email: 'haziq@emobooks.com', status: 'verified' as ClaimStatus },
+      { name: 'Nur Aishah binti Razali', staffId: 'EMO-EDT-022', dept: 'Editorial & Publishing', email: 'aishah@emobooks.com', status: 'verified' as ClaimStatus },
+      { name: 'Mohd Haziq bin Ismail', staffId: 'EMO-STF-084', dept: 'Sales & Marketing', email: 'haziq@emobooks.com', status: 'needs_review' as ClaimStatus },
+      { name: 'Tan Wei Ming', staffId: 'EMO-WHS-015', dept: 'Warehouse & Dispatch', email: 'weiming@emobooks.com', status: 'verified' as ClaimStatus },
+      { name: 'Siti Sarah binti Latif', staffId: 'EMO-OPS-031', dept: 'Operations & Retail', email: 'sitisarah@emobooks.com', status: 'approved' as ClaimStatus },
+      { name: 'Farid bin Zakaria', staffId: 'EMO-STF-099', dept: 'Sales & Marketing', email: 'farid@emobooks.com', status: 'flagged' as ClaimStatus },
+    ];
+
+    const seeded: AuditedReceiptRecord[] = SAMPLE_RECEIPTS.map((s, idx) => {
+      const assignment = staffAssignments[idx % staffAssignments.length];
+      return {
+        id: `seeded-${s.id}-${idx}`,
+        createdAt: new Date(Date.now() - (idx * 86400000 * 2)).toISOString(),
+        claimantName: assignment.name,
+        claimantStaffId: assignment.staffId,
+        claimantEmail: assignment.email,
+        department: assignment.dept,
+        claimMonth: claimMonth,
+        imagePreviewUrl: s.imageSvg,
+        fileName: `${s.name.replace(/\s+/g, '_')}.svg`,
+        fileSizeBytes: 2048,
+        status: assignment.status,
+        auditResult: s.expectedAudit,
+        notes: s.description,
+        verifiedBy: assignment.status === 'verified' || assignment.status === 'approved' ? 'emoacc2@gmail.com' : undefined,
+        verifiedAt: assignment.status === 'verified' || assignment.status === 'approved' ? new Date().toISOString() : undefined,
+        approvedBy: assignment.status === 'approved' ? 'Managing Director' : undefined,
+        approvedAt: assignment.status === 'approved' ? new Date().toISOString() : undefined,
+      };
+    });
     saveBatchToStorage(seeded);
     loadRecordIntoWorkspace(seeded[0]);
+  };
+
+  // Accounts Admin Operations Handlers
+  const handleSaveAdminRecord = (updated: AuditedReceiptRecord) => {
+    const updatedList = batchRecords.map(r => r.id === updated.id ? updated : r);
+    saveBatchToStorage(updatedList);
+    if (activeRecordId === updated.id) {
+      loadRecordIntoWorkspace(updated);
+    }
+  };
+
+  const handleRemoveStaff = (staffIdToRemove: string, removeClaims: boolean) => {
+    const staff = staffRoster.find(s => s.id === staffIdToRemove);
+    if (!staff) return;
+    const updatedRoster = staffRoster.filter(s => s.id !== staffIdToRemove);
+    setStaffRoster(updatedRoster);
+    saveStaffRoster(updatedRoster);
+
+    if (removeClaims) {
+      const remainingClaims = batchRecords.filter(
+        c => c.claimantStaffId !== staff.staffId && c.claimantName !== staff.name
+      );
+      saveBatchToStorage(remainingClaims);
+    }
+  };
+
+  const handleAddStaff = (newStaff: StaffProfile) => {
+    const updated = [...staffRoster, newStaff];
+    setStaffRoster(updated);
+    saveStaffRoster(updated);
+  };
+
+  const handleSelectUser = (profile: StaffProfile) => {
+    setCurrentUserEmail(profile.email);
+    setCurrentRole(profile.role);
+    if (profile.role === 'accounts_admin') {
+      setCurrentTab('admin');
+    } else {
+      setStaffName(profile.name);
+      setStaffId(profile.staffId);
+      setDepartment(profile.department);
+      setCurrentTab('audit');
+    }
+  };
+
+  const handleCustomEmailLogin = (email: string) => {
+    setCurrentUserEmail(email);
+    const matched = staffRoster.find(s => s.email.toLowerCase() === email.toLowerCase());
+    if (matched) {
+      handleSelectUser(matched);
+    } else if (email.toLowerCase().includes('admin') || email.toLowerCase() === 'emoacc2@gmail.com') {
+      setCurrentRole('accounts_admin');
+      setCurrentTab('admin');
+    } else {
+      setCurrentRole('staff');
+      setCurrentTab('audit');
+    }
   };
 
   const loadRecordIntoWorkspace = (record: AuditedReceiptRecord) => {
@@ -222,7 +347,7 @@ export default function App() {
         throw new Error(json.error || 'Server failed to audit receipt.');
       }
 
-      const result: AuditResult = json.data;
+      const result: AuditResult = normalizeAuditResult(json.data);
       setAuditResult(result);
       setIsSavedToBatch(false);
     } catch (err: any) {
@@ -244,12 +369,13 @@ export default function App() {
       createdAt: new Date().toISOString(),
       claimantName: staffName,
       claimantStaffId: staffId,
+      claimantEmail: currentUserEmail,
       department: department,
       claimMonth: claimMonth,
       imagePreviewUrl: imageSrc,
       fileName: fileName || 'Receipt.jpg',
       fileSizeBytes: fileSizeBytes || 1024,
-      status: 'verified',
+      status: (auditResult.audit_notes || auditResult.audit_flags || []).length > 0 ? 'needs_review' : 'verified',
       auditResult: auditResult,
       notes: claimantNotes,
     };
@@ -267,6 +393,48 @@ export default function App() {
     saveBatchToStorage(updatedBatch);
     setActiveRecordId(recordId);
     setIsSavedToBatch(true);
+  };
+
+  const handleAddBatchRecords = (newRecords: AuditedReceiptRecord[]) => {
+    const updated = [...newRecords, ...batchRecords];
+    saveBatchToStorage(updated);
+    if (newRecords.length > 0) {
+      loadRecordIntoWorkspace(newRecords[0]);
+    }
+  };
+
+  const handleDismissFlag = (index: number) => {
+    if (!auditResult) return;
+    const currentNotes = auditResult.audit_notes || auditResult.audit_flags || [];
+    const updatedNotes = currentNotes.filter((_, i) => i !== index);
+    setAuditResult({
+      ...auditResult,
+      audit_notes: updatedNotes,
+      audit_flags: updatedNotes,
+    });
+    setIsSavedToBatch(false);
+  };
+
+  const handleAddNote = (noteText: string) => {
+    if (!auditResult) return;
+    const currentNotes = auditResult.audit_notes || auditResult.audit_flags || [];
+    const updatedNotes = [...currentNotes, noteText];
+    setAuditResult({
+      ...auditResult,
+      audit_notes: updatedNotes,
+      audit_flags: updatedNotes,
+    });
+    setIsSavedToBatch(false);
+  };
+
+  const handleClearNotes = () => {
+    if (!auditResult) return;
+    setAuditResult({
+      ...auditResult,
+      audit_notes: [],
+      audit_flags: [],
+    });
+    setIsSavedToBatch(false);
   };
 
   const handleDeleteRecord = (id: string) => {
@@ -296,15 +464,35 @@ export default function App() {
 
   const handleDownloadSingleJson = () => {
     if (!auditResult) return;
-    const vendorSlug = (auditResult.receipt_summary.merchant_name || 'receipt')
+    const summary = auditResult.receipt_info;
+    const vendorSlug = (summary.merchant_name || 'receipt')
       .replace(/[^a-zA-Z0-9]/g, '_')
       .toLowerCase();
-    downloadJson(auditResult, `EMO_Audit_${vendorSlug}_${auditResult.receipt_summary.date || 'claim'}.json`);
+
+    const payload = {
+      receipt_info: {
+        merchant_name: summary.merchant_name,
+        merchant_ssm_or_tax_no: summary.merchant_ssm_or_tax_no || null,
+        receipt_no: summary.receipt_no || summary.invoice_receipt_no || null,
+        date: summary.date,
+        total_amount_rm: summary.total_amount_rm ?? summary.receipt_grand_total ?? 0,
+      },
+      claim_items: auditResult.claim_items.map((item) => ({
+        code: item.code,
+        details: item.details,
+        amount_rm: Number(item.amount_rm || 0),
+        remark: item.remark || '',
+      })),
+      claim_total_rm: Number(auditResult.claim_total_rm || 0),
+      audit_notes: auditResult.audit_notes,
+    };
+
+    downloadJson(payload, `EMO_Audit_${vendorSlug}_${summary.date || 'claim'}.json`);
   };
 
   const handleDownloadSingleCsv = () => {
     if (!auditResult) return;
-    const summary = auditResult.receipt_summary;
+    const summary = auditResult.receipt_info;
     const headers = [
       'Merchant Name',
       'SSM / Tax No',
@@ -314,20 +502,21 @@ export default function App() {
       'Details / Particulars',
       'Amount (RM)',
       'Remark',
-      'Receipt Grand Total (RM)',
+      'Receipt Total (RM)',
     ];
-    const rows = auditResult.claim_entries.map((e) => [
+    const items = auditResult.claim_items;
+    const rows = items.map((e) => [
       summary.merchant_name,
       summary.merchant_ssm_or_tax_no || '',
-      summary.invoice_receipt_no || '',
+      summary.receipt_no || summary.invoice_receipt_no || '',
       summary.date,
       e.code,
       e.details,
       Number(e.amount_rm).toFixed(2),
       e.remark || '',
-      Number(summary.receipt_grand_total).toFixed(2),
+      Number(summary.total_amount_rm ?? summary.receipt_grand_total ?? 0).toFixed(2),
     ]);
-    downloadCsv(rows, headers, `EMO_Claim_${summary.invoice_receipt_no || 'audit'}.csv`);
+    downloadCsv(rows, headers, `EMO_Claim_${summary.receipt_no || summary.invoice_receipt_no || 'audit'}.csv`);
   };
 
   const batchTotalRm = batchRecords.reduce((sum, r) => sum + (r.auditResult.claim_total_rm || 0), 0);
@@ -357,14 +546,59 @@ export default function App() {
         setClaimMonth={setClaimMonth}
         batchCount={batchRecords.length}
         batchTotal={batchTotalRm}
+        pendingAdminCount={batchRecords.filter(c => c.status === 'needs_review' || c.status === 'flagged').length}
+        currentUserEmail={currentUserEmail}
+        currentRole={currentRole}
+        onOpenAuthModal={() => setIsAuthModalOpen(true)}
         onOpenPrintModal={() => setIsPrintModalOpen(true)}
         onOpenCodebook={() => setIsCodebookOpen(true)}
-        onNewAudit={resetWorkspace}
+        onOpenPromptModal={() => setIsPromptModalOpen(true)}
+        onNewAudit={() => {
+          resetWorkspace();
+          setCurrentTab('audit');
+        }}
       />
 
       {/* Main Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-5">
         
+        {/* TAB 0: ACCOUNTS ADMIN DASHBOARD */}
+        {currentTab === 'admin' && (
+          <AdminDashboard
+            claims={batchRecords}
+            staffList={staffRoster}
+            adminEmail={currentUserEmail}
+            onOpenReviewModal={(record) => {
+              setReviewRecord(record);
+              setIsReviewModalOpen(true);
+            }}
+            onOpenStaffRemovalModal={() => setIsStaffRemovalModalOpen(true)}
+            onVerifyRecord={(record) => {
+              const updated: AuditedReceiptRecord = {
+                ...record,
+                status: 'verified',
+                verifiedBy: currentUserEmail,
+                verifiedAt: new Date().toISOString(),
+                adminAuditNote: 'Reconciled and verified clean by Accounts Admin.',
+              };
+              handleSaveAdminRecord(updated);
+            }}
+            onDeleteRecord={handleDeleteRecord}
+            onPrintRecord={(record) => {
+              loadRecordIntoWorkspace(record);
+              setIsPrintModalOpen(true);
+            }}
+            onSwitchToStaffAudit={(staff) => {
+              if (staff) {
+                setStaffName(staff.name);
+                setStaffId(staff.staffId);
+                setDepartment(staff.department);
+              }
+              setCurrentTab('audit');
+            }}
+          />
+        )}
+
         {/* TAB 1: AUDIT WORKSPACE */}
         {currentTab === 'audit' && (
           <div className="space-y-4">
@@ -384,6 +618,14 @@ export default function App() {
                   </button>
 
                   <button
+                    onClick={() => setIsBulkModalOpen(true)}
+                    className="px-3.5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs flex items-center gap-2 shadow-sm transition"
+                  >
+                    <Layers className="w-4 h-4 text-white" />
+                    <span>Bulk Upload Queue</span>
+                  </button>
+
+                  <button
                     onClick={() => setIsCameraOpen(true)}
                     className="px-3.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-semibold text-xs flex items-center gap-2 transition"
                   >
@@ -395,8 +637,16 @@ export default function App() {
                     onClick={() => setIsSampleModalOpen(true)}
                     className="px-3.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-semibold text-xs flex items-center gap-2 transition"
                   >
+                    <FileText className="w-4 h-4 text-amber-400" />
+                    <span>Malaysian Test Receipts (6)</span>
+                  </button>
+
+                  <button
+                    onClick={() => setIsPromptModalOpen(true)}
+                    className="px-3.5 py-2 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 font-semibold text-xs flex items-center gap-2 transition"
+                  >
                     <Sparkles className="w-4 h-4 text-amber-400" />
-                    <span>Malaysian Test Receipts (5)</span>
+                    <span>AI Studio Prompt &amp; Config</span>
                   </button>
 
                   {imageSrc && (
@@ -454,13 +704,16 @@ export default function App() {
                   <>
                     {/* Compliance & Audit Flags */}
                     <AuditFlagsPanel
-                      flags={auditResult.audit_flags || []}
-                      claimEntries={auditResult.claim_entries || []}
+                      flags={auditResult.audit_notes || auditResult.audit_flags || []}
+                      claimEntries={auditResult.claim_items || auditResult.claim_entries || []}
+                      onDismissFlag={handleDismissFlag}
+                      onAddNote={handleAddNote}
+                      onClearNotes={handleClearNotes}
                     />
 
                     {/* Claims Ledger Table */}
                     <ClaimLedgerTable
-                      entries={auditResult.claim_entries || []}
+                      entries={auditResult.claim_items || auditResult.claim_entries || []}
                       onChangeEntries={(newEntries) => {
                         const newTotal = newEntries.reduce(
                           (sum, e) => sum + (Number(e.amount_rm) || 0),
@@ -468,12 +721,13 @@ export default function App() {
                         );
                         setAuditResult({
                           ...auditResult,
+                          claim_items: newEntries,
                           claim_entries: newEntries,
                           claim_total_rm: Math.round(newTotal * 100) / 100,
                         });
                         setIsSavedToBatch(false);
                       }}
-                      receiptSummary={auditResult.receipt_summary}
+                      receiptSummary={auditResult.receipt_info || auditResult.receipt_summary}
                       onSaveToBatch={handleSaveToBatch}
                       onDownloadJson={handleDownloadSingleJson}
                       onDownloadCsv={handleDownloadSingleCsv}
@@ -523,6 +777,7 @@ export default function App() {
             onOpenPrintModal={() => setIsPrintModalOpen(true)}
             onNewAudit={resetWorkspace}
             onLoadSamples={initInitialSamples}
+            onOpenBulkModal={() => setIsBulkModalOpen(true)}
           />
         )}
 
@@ -533,10 +788,17 @@ export default function App() {
               isOpen={true}
               onClose={() => setCurrentTab('audit')}
               onSelectCode={(code) => {
-                if (auditResult && auditResult.claim_entries.length > 0) {
-                  const updated = [...auditResult.claim_entries];
-                  updated[0].code = code;
-                  setAuditResult({ ...auditResult, claim_entries: updated });
+                if (auditResult) {
+                  const currentItems = auditResult.claim_items || auditResult.claim_entries || [];
+                  if (currentItems.length > 0) {
+                    const updated = [...currentItems];
+                    updated[0].code = code;
+                    setAuditResult({ 
+                      ...auditResult, 
+                      claim_items: updated,
+                      claim_entries: updated 
+                    });
+                  }
                 }
                 setCurrentTab('audit');
               }}
@@ -547,6 +809,16 @@ export default function App() {
       </main>
 
       {/* Modals */}
+      <BulkUploadModal
+        isOpen={isBulkModalOpen}
+        onClose={() => setIsBulkModalOpen(false)}
+        onAddBatchRecords={handleAddBatchRecords}
+        staffName={staffName}
+        staffId={staffId}
+        department={department}
+        claimMonth={claimMonth}
+      />
+
       <OfficialVoucherModal
         isOpen={isPrintModalOpen}
         onClose={() => setIsPrintModalOpen(false)}
@@ -574,6 +846,54 @@ export default function App() {
         isOpen={isSampleModalOpen}
         onClose={() => setIsSampleModalOpen(false)}
         onSelectSample={handleSelectSample}
+      />
+
+      <SystemPromptModal
+        isOpen={isPromptModalOpen}
+        onClose={() => setIsPromptModalOpen(false)}
+      />
+
+      {/* Accounts Admin Review & Reclassification Modal */}
+      <AdminClaimReviewModal
+        isOpen={isReviewModalOpen}
+        onClose={() => {
+          setIsReviewModalOpen(false);
+          setReviewRecord(null);
+        }}
+        record={reviewRecord}
+        onSaveRecord={handleSaveAdminRecord}
+        onDeleteRecord={(id) => {
+          handleDeleteRecord(id);
+          setIsReviewModalOpen(false);
+          setReviewRecord(null);
+        }}
+        onPrintRecord={(rec) => {
+          loadRecordIntoWorkspace(rec);
+          setIsReviewModalOpen(false);
+          setIsPrintModalOpen(true);
+        }}
+        adminEmail={currentUserEmail}
+      />
+
+      {/* Staff Roster Management & Removal Modal */}
+      <StaffRemovalModal
+        isOpen={isStaffRemovalModalOpen}
+        onClose={() => setIsStaffRemovalModalOpen(false)}
+        staffList={staffRoster}
+        claims={batchRecords}
+        onRemoveStaff={handleRemoveStaff}
+        onAddStaff={handleAddStaff}
+      />
+
+      {/* Email Authentication & Role Switcher Modal */}
+      <AuthRoleSwitcherModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+        currentUserEmail={currentUserEmail}
+        currentRole={currentRole}
+        staffRoster={staffRoster}
+        onSelectUser={handleSelectUser}
+        onCustomEmailLogin={handleCustomEmailLogin}
       />
 
       {/* Footer */}

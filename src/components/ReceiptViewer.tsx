@@ -214,7 +214,7 @@ export const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
                 Invoice / Receipt #
               </span>
               <p className="font-semibold text-slate-100 font-mono truncate">
-                {receiptSummary.invoice_receipt_no || 'N/A'}
+                {receiptSummary.receipt_no || receiptSummary.invoice_receipt_no || 'N/A'}
               </p>
               <p className="text-[11px] text-slate-400 flex items-center gap-1">
                 <Calendar className="w-3 h-3" />
@@ -224,22 +224,30 @@ export const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
 
             <div>
               <span className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">
-                Subtotal &amp; Tax
+                Tax &amp; SSM Status
               </span>
-              <p className="text-slate-300">
-                Subtotal: <span className="font-mono">{formatRM(receiptSummary.receipt_subtotal)}</span>
-              </p>
-              <p className="text-slate-400 text-[11px]">
-                SST: <span className="font-mono">{formatRM(receiptSummary.tax_sst)}</span>
+              <div className="flex items-center gap-1 mt-0.5">
+                {receiptSummary.merchant_ssm_or_tax_no ? (
+                  <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-medium">
+                    Tax / SSM Valid
+                  </span>
+                ) : (
+                  <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                    SSM Missing
+                  </span>
+                )}
+              </div>
+              <p className="text-slate-400 text-[10px] mt-1">
+                Currency: <span className="text-slate-300 font-mono font-medium">MYR (RM)</span>
               </p>
             </div>
 
             <div className="bg-slate-900/80 rounded-lg p-2 border border-slate-800 flex flex-col justify-center">
               <span className="text-[10px] uppercase tracking-wider text-amber-400 font-bold">
-                Grand Total
+                Total Amount (RM)
               </span>
               <span className="text-sm sm:text-base font-extrabold text-white font-mono">
-                {formatRM(receiptSummary.receipt_grand_total)}
+                {formatRM(receiptSummary.total_amount_rm ?? receiptSummary.receipt_grand_total)}
               </span>
             </div>
           </div>

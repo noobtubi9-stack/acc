@@ -29,7 +29,10 @@ interface MonthlyBatchViewProps {
   onOpenPrintModal: () => void;
   onNewAudit: () => void;
   onLoadSamples: () => void;
+  onOpenBulkModal?: () => void;
 }
+
+type SortOption = 'date-desc' | 'date-asc' | 'amount-desc' | 'amount-asc' | 'status' | 'vendor';
 
 export const MonthlyBatchView: React.FC<MonthlyBatchViewProps> = ({
   records,
@@ -42,29 +45,55 @@ export const MonthlyBatchView: React.FC<MonthlyBatchViewProps> = ({
   onOpenPrintModal,
   onNewAudit,
   onLoadSamples,
+  onOpenBulkModal,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [sortBy, setSortBy] = useState<SortOption>('date-desc');
 
   const filteredRecords = records.filter(rec => {
+    const summary = rec.auditResult.receipt_info || rec.auditResult.receipt_summary;
+    const items = rec.auditResult.claim_items || rec.auditResult.claim_entries || [];
     const matchesSearch = 
-      rec.auditResult.receipt_summary.merchant_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      rec.auditResult.claim_entries.some(e => e.details.toLowerCase().includes(searchTerm.toLowerCase()) || e.code.includes(searchTerm));
+      summary.merchant_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      items.some(e => e.details.toLowerCase().includes(searchTerm.toLowerCase()) || e.code.includes(searchTerm));
     
     if (selectedCategory === 'all') return matchesSearch;
-    const matchesCat = rec.auditResult.claim_entries.some(e => {
+    const matchesCat = items.some(e => {
       const coa = EMO_ACCOUNT_CODES.find(c => c.code === e.code);
       return coa?.category === selectedCategory;
     });
     return matchesSearch && matchesCat;
+  }).sort((a, b) => {
+    const sumA = a.auditResult.receipt_info || a.auditResult.receipt_summary;
+    const sumB = b.auditResult.receipt_info || b.auditResult.receipt_summary;
+    const totalA = a.auditResult.claim_total_rm || 0;
+    const totalB = b.auditResult.claim_total_rm || 0;
+    const dateA = new Date(sumA.date || '1970-01-01').getTime();
+    const dateB = new Date(sumB.date || '1970-01-01').getTime();
+
+    if (sortBy === 'date-desc') return dateB - dateA;
+    if (sortBy === 'date-asc') return dateA - dateB;
+    if (sortBy === 'amount-desc') return totalB - totalA;
+    if (sortBy === 'amount-asc') return totalA - totalB;
+    if (sortBy === 'vendor') return sumA.merchant_name.localeCompare(sumB.merchant_name);
+    if (sortBy === 'status') {
+      const notesA = (a.auditResult.audit_notes || a.auditResult.audit_flags || []).length;
+      const notesB = (b.auditResult.audit_notes || b.auditResult.audit_flags || []).length;
+      return notesB - notesA;
+    }
+    return 0;
   });
 
   const totalBatchRm = records.reduce((sum, r) => sum + (r.auditResult.claim_total_rm || 0), 0);
+  const verifiedCount = records.filter(r => (r.auditResult.audit_notes || r.auditResult.audit_flags || []).length === 0).length;
+  const notesCount = records.length - verifiedCount;
 
   // Group expenditures by category
   const categoryTotals: Record<string, number> = {};
   records.forEach(r => {
-    r.auditResult.claim_entries.forEach(e => {
+    const items = r.auditResult.claim_items || r.auditResult.claim_entries || [];
+    items.forEach(e => {
       const coa = EMO_ACCOUNT_CODES.find(c => c.code === e.code);
       const cat = coa?.category || 'Others';
       categoryTotals[cat] = (categoryTotals[cat] || 0) + (Number(e.amount_rm) || 0);
@@ -91,8 +120,17 @@ export const MonthlyBatchView: React.FC<MonthlyBatchViewProps> = ({
 
     const rows: (string | number)[][] = [];
     records.forEach(r => {
-      const summary = r.auditResult.receipt_summary;
-      r.auditResult.claim_entries.forEach(e => {
+      const summary = r.auditResult.receipt_info || r.auditResult.receipt_summary || {
+        merchant_name: '',
+        merchant_ssm_or_tax_no: '',
+        receipt_no: '',
+        invoice_receipt_no: '',
+        date: '',
+        total_amount_rm: 0,
+        receipt_grand_total: 0
+      };
+      const items = r.auditResult.claim_items || r.auditResult.claim_entries || [];
+      items.forEach(e => {
         const coa = EMO_ACCOUNT_CODES.find(c => c.code === e.code);
         rows.push([
           claimMonth,
@@ -102,13 +140,13 @@ export const MonthlyBatchView: React.FC<MonthlyBatchViewProps> = ({
           summary.date || '',
           summary.merchant_name || '',
           summary.merchant_ssm_or_tax_no || '',
-          summary.invoice_receipt_no || '',
+          summary.receipt_no || summary.invoice_receipt_no || '',
           e.code,
           coa?.details || '',
           e.details,
           Number(e.amount_rm).toFixed(2),
           e.remark || '',
-          Number(summary.receipt_grand_total).toFixed(2)
+          Number(summary.total_amount_rm ?? summary.receipt_grand_total ?? 0).toFixed(2)
         ]);
       });
     });
@@ -161,12 +199,21 @@ export const MonthlyBatchView: React.FC<MonthlyBatchViewProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            {onOpenBulkModal && (
+              <button
+                onClick={onOpenBulkModal}
+                className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-sm transition"
+              >
+                <Layers className="w-3.5 h-3.5" />
+                <span>Bulk Upload Queue</span>
+              </button>
+            )}
             <button
               onClick={onNewAudit}
               className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 shadow-sm transition"
             >
               <Plus className="w-3.5 h-3.5" />
-              Audit Another Receipt
+              Audit Receipt
             </button>
             <button
               onClick={onOpenPrintModal}
@@ -229,20 +276,19 @@ export const MonthlyBatchView: React.FC<MonthlyBatchViewProps> = ({
 
           <div className="bg-slate-950/70 p-3 rounded-lg border border-slate-800">
             <span className="text-[10px] uppercase tracking-wider text-slate-400 block font-semibold">
-              Total Claim Items
+              Rule 5 Clean Verified
             </span>
-            <span className="text-lg sm:text-xl font-bold text-white font-mono">
-              {records.reduce((cnt, r) => cnt + r.auditResult.claim_entries.length, 0)}
+            <span className="text-lg sm:text-xl font-bold text-emerald-400 font-mono">
+              {verifiedCount}
             </span>
           </div>
 
           <div className="bg-slate-950/70 p-3 rounded-lg border border-slate-800">
             <span className="text-[10px] uppercase tracking-wider text-slate-400 block font-semibold">
-              Audit Status
+              Auditor Notes / Flags
             </span>
-            <span className="text-xs font-bold text-emerald-400 flex items-center gap-1 mt-1">
-              <CheckCircle2 className="w-3.5 h-3.5" />
-              Ready for Voucher
+            <span className={`text-lg sm:text-xl font-bold font-mono ${notesCount > 0 ? 'text-amber-400' : 'text-slate-400'}`}>
+              {notesCount}
             </span>
           </div>
         </div>
@@ -281,21 +327,36 @@ export const MonthlyBatchView: React.FC<MonthlyBatchViewProps> = ({
           />
         </div>
 
-        <div className="flex items-center gap-2">
-          <Filter className="w-3.5 h-3.5 text-slate-400" />
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-1.5">
+            <Filter className="w-3.5 h-3.5 text-slate-400" />
+            <select
+              value={selectedCategory}
+              onChange={(e) => setSelectedCategory(e.target.value)}
+              className="bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-amber-400"
+            >
+              <option value="all">All Categories</option>
+              <option value="Purchases">Purchases (Resell Books)</option>
+              <option value="Travel & Transport">Travel &amp; Transport / Fuel</option>
+              <option value="Logistics & Packaging">Logistics &amp; Packaging</option>
+              <option value="Admin & Office">Admin &amp; Office</option>
+              <option value="Staff & Welfare">Staff &amp; Welfare</option>
+              <option value="Promotions & Marketing">Promotions &amp; Marketing</option>
+              <option value="Others">Others</option>
+            </select>
+          </div>
+
           <select
-            value={selectedCategory}
-            onChange={(e) => setSelectedCategory(e.target.value)}
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value as SortOption)}
             className="bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-amber-400"
           >
-            <option value="all">All Categories</option>
-            <option value="Purchases">Purchases (Resell Books)</option>
-            <option value="Travel & Transport">Travel &amp; Transport / Fuel</option>
-            <option value="Logistics & Packaging">Logistics &amp; Packaging</option>
-            <option value="Admin & Office">Admin &amp; Office</option>
-            <option value="Staff & Welfare">Staff &amp; Welfare</option>
-            <option value="Promotions & Marketing">Promotions &amp; Marketing</option>
-            <option value="Others">Others</option>
+            <option value="date-desc">Date (Newest First)</option>
+            <option value="date-asc">Date (Oldest First)</option>
+            <option value="amount-desc">Amount (Highest First)</option>
+            <option value="amount-asc">Amount (Lowest First)</option>
+            <option value="status">Audit Status (Flags First)</option>
+            <option value="vendor">Vendor Name (A-Z)</option>
           </select>
         </div>
       </div>
@@ -318,9 +379,19 @@ export const MonthlyBatchView: React.FC<MonthlyBatchViewProps> = ({
               </thead>
               <tbody className="divide-y divide-slate-800/60">
                 {filteredRecords.map((record) => {
-                  const summary = record.auditResult.receipt_summary;
-                  const flags = record.auditResult.audit_flags || [];
-                  const hasDiscrepancy = Math.abs(summary.receipt_grand_total - record.auditResult.claim_total_rm) > 0.01;
+                  const summary = record.auditResult.receipt_info || record.auditResult.receipt_summary || {
+                    merchant_name: 'Vendor Unnamed',
+                    merchant_ssm_or_tax_no: null,
+                    receipt_no: null,
+                    invoice_receipt_no: null,
+                    date: '',
+                    total_amount_rm: 0,
+                    receipt_grand_total: 0
+                  };
+                  const flags = record.auditResult.audit_notes || record.auditResult.audit_flags || [];
+                  const grandTotal = Number(summary.total_amount_rm ?? summary.receipt_grand_total ?? 0);
+                  const hasDiscrepancy = Math.abs(grandTotal - record.auditResult.claim_total_rm) > 0.01;
+                  const items = record.auditResult.claim_items || record.auditResult.claim_entries || [];
 
                   return (
                     <tr key={record.id} className="hover:bg-slate-800/40 transition">
@@ -329,7 +400,7 @@ export const MonthlyBatchView: React.FC<MonthlyBatchViewProps> = ({
                           {summary.merchant_name || 'Vendor Unnamed'}
                         </div>
                         <div className="text-[11px] text-slate-400 font-mono">
-                          {summary.invoice_receipt_no ? `#${summary.invoice_receipt_no}` : 'No receipt #'}
+                          {(summary.receipt_no || summary.invoice_receipt_no) ? `#${summary.receipt_no || summary.invoice_receipt_no}` : 'No receipt #'}
                           {summary.merchant_ssm_or_tax_no && ` • SSM: ${summary.merchant_ssm_or_tax_no}`}
                         </div>
                       </td>
@@ -340,7 +411,7 @@ export const MonthlyBatchView: React.FC<MonthlyBatchViewProps> = ({
 
                       <td className="py-3 px-3">
                         <div className="space-y-1 max-w-md">
-                          {record.auditResult.claim_entries.map((entry, idx) => (
+                          {items.map((entry, idx) => (
                             <div key={idx} className="flex items-center gap-1.5 text-[11px]">
                               <span className="font-mono px-1 py-0.2 rounded bg-slate-800 text-amber-300 font-bold text-[10px]">
                                 {entry.code}
@@ -355,7 +426,7 @@ export const MonthlyBatchView: React.FC<MonthlyBatchViewProps> = ({
                       </td>
 
                       <td className="py-3 px-3 text-right font-mono text-slate-300">
-                        {formatRM(summary.receipt_grand_total)}
+                        {formatRM(grandTotal)}
                       </td>
 
                       <td className="py-3 px-3 text-right font-mono font-bold text-amber-400">

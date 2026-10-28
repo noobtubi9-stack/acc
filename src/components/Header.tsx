@@ -9,12 +9,16 @@ import {
   CheckCircle2, 
   Building2,
   Calendar,
-  UserCheck
+  UserCheck,
+  Sparkles,
+  ShieldCheck,
+  Key,
+  User
 } from 'lucide-react';
 
 interface HeaderProps {
-  currentTab: 'audit' | 'batch' | 'codebook';
-  setCurrentTab: (tab: 'audit' | 'batch' | 'codebook') => void;
+  currentTab: 'audit' | 'batch' | 'admin' | 'codebook';
+  setCurrentTab: (tab: 'audit' | 'batch' | 'admin' | 'codebook') => void;
   staffName: string;
   setStaffName: (val: string) => void;
   staffId: string;
@@ -25,8 +29,13 @@ interface HeaderProps {
   setClaimMonth: (val: string) => void;
   batchCount: number;
   batchTotal: number;
+  pendingAdminCount?: number;
+  currentUserEmail?: string;
+  currentRole?: 'staff' | 'accounts_admin';
+  onOpenAuthModal?: () => void;
   onOpenPrintModal: () => void;
   onOpenCodebook: () => void;
+  onOpenPromptModal?: () => void;
   onNewAudit: () => void;
 }
 
@@ -43,8 +52,13 @@ export const Header: React.FC<HeaderProps> = ({
   setClaimMonth,
   batchCount,
   batchTotal,
+  pendingAdminCount = 0,
+  currentUserEmail = 'emoacc2@gmail.com',
+  currentRole = 'accounts_admin',
+  onOpenAuthModal,
   onOpenPrintModal,
   onOpenCodebook,
+  onOpenPromptModal,
   onNewAudit,
 }) => {
   return (
@@ -75,53 +89,70 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           </div>
 
-          {/* Claimant Profile & Claim Month Controls */}
-          <div className="flex flex-wrap items-center gap-2 sm:gap-3 bg-slate-800/80 px-3 py-1.5 rounded-xl border border-slate-700/60 text-xs">
-            <div className="flex items-center gap-1.5 text-slate-300">
-              <UserCheck className="w-3.5 h-3.5 text-amber-400" />
+          {/* Right Side: Identity Switcher & Claimant Controls */}
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+            
+            {/* Identity Switcher Button */}
+            {onOpenAuthModal && (
+              <button
+                onClick={onOpenAuthModal}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700/80 border border-slate-700/80 text-xs transition"
+                title="Switch User / Role"
+              >
+                <div className={`w-2 h-2 rounded-full ${currentRole === 'accounts_admin' ? 'bg-amber-400' : 'bg-emerald-400'}`}></div>
+                <div className="flex flex-col text-left">
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-bold text-white max-w-[140px] truncate">{currentUserEmail}</span>
+                    <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded ${
+                      currentRole === 'accounts_admin'
+                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                        : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                    }`}>
+                      {currentRole === 'accounts_admin' ? 'Admin' : 'Staff'}
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-slate-400">Switch user / role</span>
+                </div>
+              </button>
+            )}
+
+            {/* Claimant Profile & Claim Month Controls */}
+            <div className="flex flex-wrap items-center gap-2 bg-slate-800/80 px-3 py-1.5 rounded-xl border border-slate-700/60 text-xs">
+              <div className="flex items-center gap-1.5 text-slate-300">
+                <UserCheck className="w-3.5 h-3.5 text-amber-400" />
+                <input
+                  type="text"
+                  value={staffName}
+                  onChange={(e) => setStaffName(e.target.value)}
+                  placeholder="Claimant Name"
+                  className="bg-transparent border-b border-slate-600 focus:border-amber-400 focus:outline-none text-white font-medium w-28 sm:w-32 py-0.5"
+                  title="Staff Claimant Name"
+                />
+              </div>
+              <div className="text-slate-600">|</div>
               <input
                 type="text"
-                value={staffName}
-                onChange={(e) => setStaffName(e.target.value)}
-                placeholder="Claimant Name"
-                className="bg-transparent border-b border-slate-600 focus:border-amber-400 focus:outline-none text-white font-medium w-28 sm:w-36 py-0.5"
-                title="Staff Claimant Name"
+                value={staffId}
+                onChange={(e) => setStaffId(e.target.value)}
+                placeholder="Staff ID"
+                className="bg-transparent border-b border-slate-600 focus:border-amber-400 focus:outline-none text-slate-300 w-16 py-0.5"
+                title="Staff ID (e.g. EMO-STF-084)"
               />
+              <div className="text-slate-600 hidden sm:inline">|</div>
+              <div className="flex items-center gap-1 text-slate-300">
+                <Calendar className="w-3.5 h-3.5 text-amber-400" />
+                <input
+                  type="month"
+                  value={claimMonth}
+                  onChange={(e) => setClaimMonth(e.target.value)}
+                  className="bg-slate-900 border border-slate-700 rounded px-1.5 py-0.5 text-slate-300 text-xs focus:outline-none focus:border-amber-400"
+                  title="Claim Month"
+                />
+              </div>
             </div>
-            <div className="text-slate-600">|</div>
-            <input
-              type="text"
-              value={staffId}
-              onChange={(e) => setStaffId(e.target.value)}
-              placeholder="Staff ID"
-              className="bg-transparent border-b border-slate-600 focus:border-amber-400 focus:outline-none text-slate-300 w-20 py-0.5"
-              title="Staff ID (e.g. EMO-STF-084)"
-            />
-            <div className="text-slate-600 hidden sm:inline">|</div>
-            <select
-              value={department}
-              onChange={(e) => setDepartment(e.target.value)}
-              className="bg-slate-900 border border-slate-700 rounded px-2 py-0.5 text-slate-300 focus:outline-none focus:border-amber-400"
-              title="Department"
-            >
-              <option value="Sales & Marketing">Sales &amp; Marketing</option>
-              <option value="Editorial & Publishing">Editorial &amp; Publishing</option>
-              <option value="Warehouse & Dispatch">Warehouse &amp; Dispatch</option>
-              <option value="Operations & Retail">Operations &amp; Retail</option>
-              <option value="Finance & Administration">Finance &amp; Admin</option>
-            </select>
-            <div className="text-slate-600">|</div>
-            <div className="flex items-center gap-1 text-slate-300">
-              <Calendar className="w-3.5 h-3.5 text-amber-400" />
-              <input
-                type="month"
-                value={claimMonth}
-                onChange={(e) => setClaimMonth(e.target.value)}
-                className="bg-slate-900 border border-slate-700 rounded px-1.5 py-0.5 text-slate-300 text-xs focus:outline-none focus:border-amber-400"
-                title="Claim Month"
-              />
-            </div>
+
           </div>
+
         </div>
       </div>
 
@@ -131,11 +162,32 @@ export const Header: React.FC<HeaderProps> = ({
           
           {/* Tabs */}
           <div className="flex items-center space-x-1 sm:space-x-2">
+            
+            {/* Accounts Admin Operations Tab */}
+            <button
+              onClick={() => setCurrentTab('admin')}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all ${
+                currentTab === 'admin'
+                  ? 'bg-amber-500 text-slate-950 shadow-sm shadow-amber-500/20 font-bold'
+                  : 'text-slate-300 hover:text-white hover:bg-slate-800'
+              }`}
+            >
+              <ShieldCheck className="w-3.5 h-3.5" />
+              <span>Admin Operations</span>
+              {pendingAdminCount > 0 && (
+                <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                  currentTab === 'admin' ? 'bg-slate-950 text-amber-400' : 'bg-amber-500 text-slate-950'
+                }`}>
+                  {pendingAdminCount}
+                </span>
+              )}
+            </button>
+
             <button
               onClick={() => setCurrentTab('audit')}
               className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all ${
                 currentTab === 'audit'
-                  ? 'bg-amber-500 text-slate-950 shadow-sm shadow-amber-500/20'
+                  ? 'bg-amber-500 text-slate-950 shadow-sm shadow-amber-500/20 font-bold'
                   : 'text-slate-300 hover:text-white hover:bg-slate-800'
               }`}
             >
@@ -147,7 +199,7 @@ export const Header: React.FC<HeaderProps> = ({
               onClick={() => setCurrentTab('batch')}
               className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all ${
                 currentTab === 'batch'
-                  ? 'bg-amber-500 text-slate-950 shadow-sm shadow-amber-500/20'
+                  ? 'bg-amber-500 text-slate-950 shadow-sm shadow-amber-500/20 font-bold'
                   : 'text-slate-300 hover:text-white hover:bg-slate-800'
               }`}
             >
@@ -164,7 +216,7 @@ export const Header: React.FC<HeaderProps> = ({
               onClick={() => setCurrentTab('codebook')}
               className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all ${
                 currentTab === 'codebook'
-                  ? 'bg-amber-500 text-slate-950 shadow-sm shadow-amber-500/20'
+                  ? 'bg-amber-500 text-slate-950 shadow-sm shadow-amber-500/20 font-bold'
                   : 'text-slate-300 hover:text-white hover:bg-slate-800'
               }`}
             >
@@ -199,6 +251,17 @@ export const Header: React.FC<HeaderProps> = ({
               <Printer className="w-3.5 h-3.5" />
               <span>Print Claim Voucher</span>
             </button>
+
+            {onOpenPromptModal && (
+              <button
+                onClick={onOpenPromptModal}
+                className="px-2.5 py-1 rounded-md bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1.5 font-medium transition"
+                title="View and copy Google AI Studio System Prompt & Settings"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                <span className="hidden sm:inline">AI Studio Prompt</span>
+              </button>
+            )}
 
             <button
               onClick={onOpenCodebook}

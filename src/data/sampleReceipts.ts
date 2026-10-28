@@ -1,7 +1,7 @@
 /**
  * Realistic Malaysian Sample Receipts for EMO Book Services Claims Testing
  */
-import { AuditResult } from '../types/claim';
+import { AuditResult, normalizeAuditResult } from '../types/claim';
 
 export interface SampleReceipt {
   id: string;
@@ -15,7 +15,7 @@ export interface SampleReceipt {
   expectedAudit: AuditResult;
 }
 
-export const SAMPLE_RECEIPTS: SampleReceipt[] = [
+const RAW_SAMPLES = [
   {
     id: 'sample-fuel-snack',
     name: 'Petronas Station (Fuel + Pantry)',
@@ -95,9 +95,7 @@ export const SAMPLE_RECEIPTS: SampleReceipt[] = [
         }
       ],
       claim_total_rm: 74.50,
-      audit_flags: [
-        'Notice: Petrol station receipt was split into fuel (920-0000 RM65.00) and staff pantry welfare (926-0000 RM9.50) per EMO claims policy.'
-      ]
+      audit_flags: []
     }
   },
   {
@@ -346,9 +344,7 @@ export const SAMPLE_RECEIPTS: SampleReceipt[] = [
         }
       ],
       claim_total_rm: 104.90,
-      audit_flags: [
-        'Notice: Split into Cardboard Boxes (617-0001 RM45.00), Bubble wrap/OPP tape (617-0003 RM45.50), and Office Stationery (910-0000 RM14.40).'
-      ]
+      audit_flags: []
     }
   },
   {
@@ -492,5 +488,86 @@ export const SAMPLE_RECEIPTS: SampleReceipt[] = [
       claim_total_rm: 68.90,
       audit_flags: []
     }
+  },
+  {
+    id: 'sample-discrepancy',
+    name: 'Perniagaan Buku Maju (Calculation Mismatch)',
+    category: 'Rule 5 Anomaly (Discrepancy)',
+    vendor: 'PERNIAGAAN BUKU MAJU (PJ)',
+    totalRm: 65.00,
+    description: 'Faded local supplier receipt where itemized lines sum to RM 65.50 vs receipt total of RM 65.00.',
+    auditScenario: 'Tests Rule #5: True anomaly detection. Calculates variance and populates audit_notes with a calculation discrepancy notice.',
+    imageSvg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 680" width="100%" height="100%" style="background:#fcfbf8;font-family:monospace;font-size:12px;fill:#1e293b;">
+      <rect width="400" height="680" fill="#fcfbf7" stroke="#e2e8f0" stroke-width="2"/>
+      <g text-anchor="middle">
+        <text x="200" y="38" font-size="16" font-weight="bold">PERNIAGAAN BUKU MAJU</text>
+        <text x="200" y="58" font-size="11">NO. 18 JALAN 14/20, SEKSYEN 14</text>
+        <text x="200" y="74" font-size="11">46100 PETALING JAYA, SELANGOR</text>
+        <text x="200" y="90" font-size="11">SSM: 200503119821 | CASH BILL</text>
+      </g>
+      <line x1="20" y1="120" x2="380" y2="120" stroke="#94a3b8" stroke-dasharray="4,4"/>
+      <text x="24" y="142">BILL NO: PBM-88219</text>
+      <text x="24" y="162">DATE: 26/10/2026 16:30:00</text>
+      <text x="24" y="182">CUSTOMER: CASH / EMO BOOK SERVICES</text>
+      <line x1="20" y1="196" x2="380" y2="196" stroke="#94a3b8" stroke-dasharray="4,4"/>
+      <text x="24" y="218" font-weight="bold">ITEMS</text>
+      <text x="320" y="218" font-weight="bold">RM</text>
+      <line x1="20" y1="228" x2="380" y2="228" stroke="#cbd5e1"/>
+
+      <text x="24" y="250">A4 PAPER IK YELLOW 70GSM (3 REAMS)</text>
+      <text x="336" y="250">42.00</text>
+
+      <text x="24" y="278">PACKING CARTON (SMALL) x 5 PCS</text>
+      <text x="336" y="278">23.50</text>
+
+      <line x1="20" y1="310" x2="380" y2="310" stroke="#cbd5e1"/>
+      <text x="24" y="335">ROUNDING ADJUSTMENT (MANUAL)</text>
+      <text x="334" y="335">-0.50</text>
+      <line x1="20" y1="355" x2="380" y2="355" stroke="#1e293b" stroke-width="1.5"/>
+      <text x="24" y="380" font-size="15" font-weight="bold">TOTAL BILLED (MYR)</text>
+      <text x="320" y="380" font-size="16" font-weight="bold">RM 65.00</text>
+      <line x1="20" y1="392" x2="380" y2="392" stroke="#1e293b" stroke-width="1.5"/>
+      <text x="24" y="420">PAYMENT: CASH RECEIVED RM 100.00</text>
+      <text x="24" y="440">CHANGE RETURNED: RM 35.00</text>
+      <g text-anchor="middle" fill="#64748b" font-size="11">
+        <text x="200" y="520">THANK YOU FOR YOUR PATRONAGE</text>
+        <text x="200" y="540">OFFICE &amp; WAREHOUSE DISPATCH EXPENSES</text>
+      </g>
+    </svg>`,
+    expectedAudit: {
+      receipt_summary: {
+        merchant_name: 'PERNIAGAAN BUKU MAJU (PJ)',
+        merchant_ssm_or_tax_no: '200503119821',
+        invoice_receipt_no: 'PBM-88219',
+        date: '2026-10-26',
+        currency: 'MYR',
+        receipt_subtotal: 65.00,
+        tax_sst: 0.00,
+        receipt_grand_total: 65.00
+      },
+      claim_entries: [
+        {
+          code: '910-0000',
+          details: 'PRINTING & STATIONERY (IK Yellow A4 Paper 3 reams)',
+          amount_rm: 42.00,
+          remark: 'Office printing paper'
+        },
+        {
+          code: '617-0001',
+          details: 'PACKING MATERIAL - BOX (5 pcs Small Cartons)',
+          amount_rm: 23.50,
+          remark: 'Mailer carton boxes'
+        }
+      ],
+      claim_total_rm: 65.50,
+      audit_flags: [
+        'Calculation Discrepancy: Sum of claim items (RM 65.50) does not match receipt total (RM 65.00). Variance: RM 0.50.'
+      ]
+    }
   }
 ];
+
+export const SAMPLE_RECEIPTS: SampleReceipt[] = RAW_SAMPLES.map((s) => ({
+  ...s,
+  expectedAudit: normalizeAuditResult(s.expectedAudit),
+}));

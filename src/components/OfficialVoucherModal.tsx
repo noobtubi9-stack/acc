@@ -32,7 +32,8 @@ export const OfficialVoucherModal: React.FC<OfficialVoucherModalProps> = ({
   // Group by Account Code
   const coaSummary: Record<string, { details: string; total: number; count: number }> = {};
   records.forEach(r => {
-    r.auditResult.claim_entries.forEach(e => {
+    const items = r.auditResult.claim_items || r.auditResult.claim_entries || [];
+    items.forEach(e => {
       const coa = EMO_ACCOUNT_CODES.find(c => c.code === e.code);
       const desc = coa?.details || e.details || 'General';
       if (!coaSummary[e.code]) {
@@ -166,8 +167,11 @@ export const OfficialVoucherModal: React.FC<OfficialVoucherModalProps> = ({
                     (() => {
                       let itemCounter = 0;
                       return records.map((record) => {
-                        const sum = record.auditResult.receipt_summary;
-                        return record.auditResult.claim_entries.map((entry, eIdx) => {
+                        const sum = record.auditResult.receipt_info || record.auditResult.receipt_summary;
+                        const items = record.auditResult.claim_items || record.auditResult.claim_entries || [];
+                        const receiptNumber = sum.receipt_no || sum.invoice_receipt_no || '-';
+
+                        return items.map((entry, eIdx) => {
                           itemCounter += 1;
                           return (
                             <tr key={`${record.id}-${eIdx}`} className="hover:bg-slate-50">
@@ -178,7 +182,7 @@ export const OfficialVoucherModal: React.FC<OfficialVoucherModalProps> = ({
                                 {sum.date || '-'}
                               </td>
                               <td className="py-1.5 px-2 font-mono text-slate-700 text-[11px] border-r border-slate-200 truncate">
-                                {sum.invoice_receipt_no || '-'}
+                                {receiptNumber}
                               </td>
                               <td className="py-1.5 px-2 font-semibold text-slate-900 text-[11px] border-r border-slate-200">
                                 {sum.merchant_name}
@@ -293,15 +297,33 @@ export const OfficialVoucherModal: React.FC<OfficialVoucherModalProps> = ({
               </div>
 
               {/* Accounts Payable / Finance */}
-              <div className="flex flex-col justify-between h-28 border border-slate-200 rounded p-2.5 bg-slate-50/50">
+              <div className="flex flex-col justify-between min-h-28 border border-slate-200 rounded p-2.5 bg-slate-50/50 relative">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-slate-600">
                   Accounts Payable / Finance
                 </span>
-                <div className="border-b border-slate-400 mx-4" />
-                <div>
-                  <p className="font-bold text-slate-900">Passed for Payment</p>
-                  <p className="text-[10px] text-slate-500">Date: _______________</p>
-                </div>
+                {records.some(r => r.verifiedBy) ? (
+                  <div className="text-center py-1 bg-emerald-50/60 rounded border border-emerald-200 my-1">
+                    <span className="inline-block px-2 py-0.5 bg-emerald-600 text-white rounded text-[9px] font-extrabold uppercase tracking-wider">
+                      VERIFIED &amp; AUDITED
+                    </span>
+                    <p className="font-mono text-[10px] font-bold text-slate-800 mt-0.5">
+                      {records.find(r => r.verifiedBy)?.verifiedBy || 'emoacc2@gmail.com'}
+                    </p>
+                    <p className="text-[9px] text-slate-500">
+                      {records.find(r => r.verifiedAt)?.verifiedAt
+                        ? new Date(records.find(r => r.verifiedAt)!.verifiedAt!).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' })
+                        : new Date().toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' })}
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="border-b border-slate-400 mx-4 my-2" />
+                    <div>
+                      <p className="font-bold text-slate-900">Pending AP Sign-Off</p>
+                      <p className="text-[10px] text-slate-500">Date: _______________</p>
+                    </div>
+                  </>
+                )}
               </div>
 
             </div>

@@ -8,10 +8,14 @@ import {
   MapPin, 
   FileCheck2, 
   DollarSign, 
-  Sparkles,
-  Download,
-  Save,
-  HelpCircle
+  Sparkles, 
+  Download, 
+  Save, 
+  HelpCircle,
+  Scissors,
+  Merge,
+  Fuel,
+  Info
 } from 'lucide-react';
 import { ClaimEntry, EMO_ACCOUNT_CODES, ReceiptSummary } from '../types/claim';
 import { formatRM, formatNumber } from '../utils/formatters';
@@ -44,13 +48,16 @@ export const ClaimLedgerTable: React.FC<ClaimLedgerTableProps> = ({
   isSaved = false,
 }) => {
   const [selectedStateIndex, setSelectedStateIndex] = useState<number | null>(null);
+  const [splittingRowIndex, setSplittingRowIndex] = useState<number | null>(null);
+  const [splitPart1Amount, setSplitPart1Amount] = useState<number>(0);
+  const [selectedRowIds, setSelectedRowIds] = useState<number[]>([]);
 
   const calculateSum = () => {
     return entries.reduce((acc, curr) => acc + (Number(curr.amount_rm) || 0), 0);
   };
 
   const claimTotal = Math.round(calculateSum() * 100) / 100;
-  const receiptTotal = Number(receiptSummary?.receipt_grand_total) || 0;
+  const receiptTotal = Number(receiptSummary?.total_amount_rm ?? receiptSummary?.receipt_grand_total ?? 0);
   const variance = Math.round((claimTotal - receiptTotal) * 100) / 100;
   const isBalanced = Math.abs(variance) < 0.01;
 
@@ -86,12 +93,11 @@ export const ClaimLedgerTable: React.FC<ClaimLedgerTableProps> = ({
 
   const handleAutoBalance = () => {
     if (entries.length === 0 || isBalanced) return;
-    // Adjust the first row or add balancing row
     const diff = receiptTotal - claimTotal;
     const updated = [...entries];
     const target = updated[updated.length - 1];
     target.amount_rm = Math.round((Number(target.amount_rm) + diff) * 100) / 100;
-    target.remark = `${target.remark ? target.remark + ' ' : ''}(Reconciled with receipt grand total)`;
+    target.remark = `${target.remark ? target.remark + ' ' : ''}(Reconciled with receipt total)`;
     onChangeEntries(updated);
   };
 
@@ -99,7 +105,7 @@ export const ClaimLedgerTable: React.FC<ClaimLedgerTableProps> = ({
     const def = EMO_ACCOUNT_CODES.find(c => c.code === newCode);
     let defaultDetails = def ? def.details : '';
     if (newCode === '923-0000' && !defaultDetails.includes('STATE:')) {
-      defaultDetails = 'ACCOMMODATION - STATE: ';
+      defaultDetails = 'ACCOMODATION - STATE: ';
     }
     const updated = [...entries];
     updated[index] = {
@@ -114,11 +120,93 @@ export const ClaimLedgerTable: React.FC<ClaimLedgerTableProps> = ({
     const updated = [...entries];
     updated[index] = {
       ...updated[index],
-      details: `ACCOMMODATION - STATE: ${stateName.toUpperCase()}`,
-      remark: updated[index].remark || `Outstation hotel accommodation in ${stateName}`
+      details: `ACCOMODATION - STATE: ${stateName.toUpperCase()}`,
+      remark: updated[index].remark || `Outstation hotel stay in ${stateName}`
     };
     onChangeEntries(updated);
     setSelectedStateIndex(null);
+  };
+
+  // Quick Split Tool (Rule 1 & Rule 2)
+  const openSplitModal = (index: number) => {
+    const current = entries[index];
+    setSplittingRowIndex(index);
+    setSplitPart1Amount(Math.round((Number(current.amount_rm) / 2) * 100) / 100);
+  };
+
+  const applySplit = (mode: 'custom' | 'petrol_pantry') => {
+    if (splittingRowIndex === null) return;
+    const original = entries[splittingRowIndex];
+    const total = Number(original.amount_rm) || 0;
+
+    let part1: ClaimEntry;
+    let part2: ClaimEntry;
+
+    if (mode === 'petrol_pantry') {
+      const fuelAmount = Math.max(0, Math.round((total * 0.85) * 100) / 100);
+      const snackAmount = Math.round((total - fuelAmount) * 100) / 100;
+      part1 = {
+        code: '920-0000',
+        details: 'PETROL-RON95/DIESEL (Vehicle Fuel)',
+        amount_rm: fuelAmount,
+        remark: 'Fuel portion isolated per Rule #2',
+      };
+      part2 = {
+        code: '926-0000',
+        details: 'STAFF WELFARE (Pantry Drinks / Snacks)',
+        amount_rm: snackAmount,
+        remark: 'Mart snacks split from petrol receipt',
+      };
+    } else {
+      const p1 = Math.min(total, Math.max(0, splitPart1Amount));
+      const p2 = Math.round((total - p1) * 100) / 100;
+      part1 = {
+        ...original,
+        amount_rm: p1,
+        remark: `${original.remark ? original.remark + ' ' : ''}(Part 1)`,
+      };
+      part2 = {
+        code: 'OTHERS',
+        details: `${original.details} (Part 2)`,
+        amount_rm: p2,
+        remark: 'Split item remainder',
+      };
+    }
+
+    const updated = [...entries];
+    updated.splice(splittingRowIndex, 1, part1, part2);
+    onChangeEntries(updated);
+    setSplittingRowIndex(null);
+  };
+
+  // Merge selected rows
+  const handleToggleSelectRow = (idx: number) => {
+    setSelectedRowIds(prev =>
+      prev.includes(idx) ? prev.filter(i => i !== idx) : [...prev, idx]
+    );
+  };
+
+  const handleMergeSelected = () => {
+    if (selectedRowIds.length < 2) return;
+    const sorted = [...selectedRowIds].sort((a, b) => a - b);
+    const selectedRows = sorted.map(i => entries[i]);
+    const mergedAmount = selectedRows.reduce((sum, r) => sum + Number(r.amount_rm), 0);
+    const primaryCode = selectedRows[0].code;
+    const mergedDetails = selectedRows.map(r => r.details).join(' + ');
+
+    const mergedEntry: ClaimEntry = {
+      code: primaryCode,
+      details: mergedDetails,
+      amount_rm: Math.round(mergedAmount * 100) / 100,
+      remark: `Merged from ${selectedRows.length} items`,
+    };
+
+    // Remove merged rows and insert single row
+    const remaining = entries.filter((_, idx) => !selectedRowIds.includes(idx));
+    const insertAt = Math.min(...sorted);
+    remaining.splice(insertAt, 0, mergedEntry);
+    onChangeEntries(remaining);
+    setSelectedRowIds([]);
   };
 
   return (
@@ -141,6 +229,17 @@ export const ClaimLedgerTable: React.FC<ClaimLedgerTableProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
+          {selectedRowIds.length >= 2 && (
+            <button
+              onClick={handleMergeSelected}
+              className="px-2.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold flex items-center gap-1.5 shadow-sm transition"
+              title="Merge selected items into one line"
+            >
+              <Merge className="w-3.5 h-3.5" />
+              <span>Merge ({selectedRowIds.length})</span>
+            </button>
+          )}
+
           <button
             onClick={handleAddRow}
             className="px-2.5 py-1.5 rounded-lg bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 border border-amber-500/30 text-xs font-semibold flex items-center gap-1.5 transition"
@@ -159,17 +258,68 @@ export const ClaimLedgerTable: React.FC<ClaimLedgerTableProps> = ({
         </div>
       </div>
 
+      {/* Quick Split Modal Dialog */}
+      {splittingRowIndex !== null && (
+        <div className="p-3 bg-amber-950/40 border-b border-amber-800/60 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2 text-amber-300">
+            <Scissors className="w-4 h-4 text-amber-400" />
+            <span>
+              <strong>Auto-Split Line #{splittingRowIndex + 1}</strong> (Total: {formatRM(entries[splittingRowIndex]?.amount_rm)}):
+            </span>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => applySplit('petrol_pantry')}
+              className="px-2.5 py-1 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 font-semibold flex items-center gap-1"
+            >
+              <Fuel className="w-3.5 h-3.5" />
+              <span>Split Fuel 920 &amp; Pantry 926</span>
+            </button>
+
+            <div className="flex items-center gap-1 bg-slate-900 border border-slate-700 rounded px-2 py-0.5">
+              <span className="text-slate-400">Part 1 RM:</span>
+              <input
+                type="number"
+                step="0.01"
+                value={splitPart1Amount}
+                onChange={(e) => setSplitPart1Amount(parseFloat(e.target.value) || 0)}
+                className="w-16 bg-slate-950 text-white font-mono px-1 rounded border border-slate-700 text-right"
+              />
+            </div>
+
+            <button
+              type="button"
+              onClick={() => applySplit('custom')}
+              className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-medium"
+            >
+              Apply Split
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setSplittingRowIndex(null)}
+              className="px-2 py-1 rounded text-slate-400 hover:text-white"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Ledger Table Container */}
       <div className="flex-1 overflow-x-auto p-3">
         <table className="w-full text-left text-xs border-collapse">
           <thead>
             <tr className="border-b border-slate-800 text-slate-400 font-medium text-[11px] uppercase tracking-wider">
-              <th className="py-2 px-2 w-10 text-center">#</th>
+              <th className="py-2 px-1 w-6 text-center"></th>
+              <th className="py-2 px-2 w-8 text-center">#</th>
               <th className="py-2 px-2 w-48 sm:w-56">Account Code</th>
               <th className="py-2 px-2 min-w-[200px]">Details / Particulars</th>
               <th className="py-2 px-2 w-28 text-right">Amount (RM)</th>
               <th className="py-2 px-2 min-w-[160px]">Audit Remark</th>
-              <th className="py-2 px-1 w-16 text-center">Action</th>
+              <th className="py-2 px-1 w-20 text-center">Action</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-800/60">
@@ -178,9 +328,24 @@ export const ClaimLedgerTable: React.FC<ClaimLedgerTableProps> = ({
               const isAccommodation = entry.code === '923-0000';
               const isFuel = entry.code === '920-0000';
               const isPackaging = entry.code.startsWith('617-');
+              const isSelected = selectedRowIds.includes(idx);
 
               return (
-                <tr key={idx} className="group hover:bg-slate-800/40 transition">
+                <tr 
+                  key={idx} 
+                  className={`group transition ${isSelected ? 'bg-amber-500/10' : 'hover:bg-slate-800/40'}`}
+                >
+                  {/* Select Checkbox for merge */}
+                  <td className="py-2.5 px-1 text-center">
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => handleToggleSelectRow(idx)}
+                      className="rounded border-slate-700 bg-slate-950 text-amber-500 focus:ring-0"
+                      title="Select to merge rows"
+                    />
+                  </td>
+
                   {/* Row number */}
                   <td className="py-2.5 px-2 text-center text-slate-500 font-mono text-[11px]">
                     {idx + 1}
@@ -233,7 +398,7 @@ export const ClaimLedgerTable: React.FC<ClaimLedgerTableProps> = ({
                       <div className="mt-1.5">
                         <div className="flex items-center gap-1 text-[11px] text-amber-300 font-medium">
                           <MapPin className="w-3 h-3 text-amber-400" />
-                          <span>Required: Must specify State (e.g. PENANG, TERENGGANU)</span>
+                          <span>Rule #3 Required: Must append State (e.g. PENANG, SELANGOR)</span>
                         </div>
                         <div className="flex flex-wrap gap-1 mt-1">
                           {MALAYSIAN_STATES.slice(0, 7).map((st) => (
@@ -301,6 +466,13 @@ export const ClaimLedgerTable: React.FC<ClaimLedgerTableProps> = ({
                   {/* Action icons */}
                   <td className="py-2.5 px-1 align-top text-center">
                     <div className="flex items-center justify-center gap-1">
+                      <button
+                        onClick={() => openSplitModal(idx)}
+                        className="p-1 rounded text-amber-400/80 hover:text-amber-300 hover:bg-slate-800 transition"
+                        title="Split Item (Rule 1 & 2)"
+                      >
+                        <Scissors className="w-3.5 h-3.5" />
+                      </button>
                       <button
                         onClick={() => handleDuplicateRow(idx)}
                         className="p-1 rounded text-slate-500 hover:text-slate-300 hover:bg-slate-800 transition"

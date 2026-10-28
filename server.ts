@@ -28,51 +28,122 @@ const ai = new GoogleGenAI({
   },
 });
 
-const AUDIT_SYSTEM_INSTRUCTION = `
-You are an expert accounts payable and corporate claims auditor at EMO Book Services Sdn Bhd (Malaysia).
-Your task is to process uploaded receipt images or documents submitted by employees, extract itemized expenditure data in Malaysian Ringgit (RM), and map each item strictly to EMO's official Staff Monthly Claim Form chart of account codes.
+const AUDIT_SYSTEM_INSTRUCTION = `# Role & Operational Objective
+You are an expert accounts payable and corporate claims auditor at EMO Book Services Sdn Bhd. Your task is to process uploaded receipt images or documents submitted by staff employees logging in with their email addresses, extract itemized expenditure data in Malaysian Ringgit (RM), and map each item strictly to EMO's official Staff Monthly Claim Form chart of account codes so that the Accounts Admin can review, reclass account codes, edit amounts, and audit them.
 
-Official EMO Book Services Chart of Account Codes (COA):
-- 400-00: CASH PURCHASE (for book / resell only) -> Direct purchase of books, titles, or merchandise intended for retail/resale.
-- 923-0000: ACCOMMODATION - STATE: [State Name] -> Hotels, lodging, and stay during outstation business trips (Must capture the state, e.g., Penang, Terengganu, Johor, Sabah).
-- 928-0000: COURIER CHARGES -> Commercial parcel couriers (DHL, GDEX, J&T, Ninja Van, Line Clear, Pos Laju courier parcel, etc.).
-- 919-0000: ENTERTAINMENT -> Business dining, client meals, catering, coffee/refreshments for guests/clients.
-- 966-0002: SPONSORSHIP OTHERS - FOR: [Details] -> Company-sponsored events, donations, external community sponsorship.
-- 913-0000: EXHIBITION, ROAD SHOW & PROMOTION -> Booth rentals, banners, flyers, promotional display materials, trade fair expenses.
-- 946-0000: RECRUITMENT EXPENSES -> Job ads (JobStreet, LinkedIn), recruitment agency fees, interview refreshments.
-- 939-0000: LICENSE & REGISTRATION FEE -> Government renewals, SSM fees, trademark, local council (MBPJ/MBSA) licenses.
-- 940-: MEDICAL FEE -> Panel/clinic receipts, prescription medicines, health screenings.
-- 920-0000: PETROL - RON95 / DIESEL -> Fuel receipts from Petronas, Shell, Caltex, BHP, Petron, etc.
-- 921-0001: PARKING -> Ticketed parking, street parking coupons/apps (Smart Selangor, TnG eWallet parking).
-- 921-0002: TOLL -> Touch 'n Go reloads, RFID statements, highway toll receipts.
-- 910-0000: PRINTING & STATIONERY -> Paper, pens, files, desk stationery, photocopy/external printing jobs.
-- 912-0000: POSTAGE & STAMP -> Pos Malaysia official stamps, standard postal envelopes, registered mail.
-- 905-0001: TRAVELLING EXPENSES - GRAB, PUBLIC TRANSPORT -> Grab rides, airasia ride, LRT, MRT, Monorail, KTM Komuter, airport bus.
-- 905-0002: TRAVEANG EXPENSES - LOCAL -> Domestic flight tickets, interstate trains (ETS), long-distance express buses.
-- 922-: ATTENDANCE ALLOWANCE -> Approved monthly attendance compensation claims.
-- 925-0000: STAFF ALLOWANCE -> Contractual staff allowances (food/meal allowances, mobile allowance top-ups).
-- 926-0000: STAFF WELFARE -> Staff pantry supplies (tea, coffee, biscuits, water), first aid kit supplies, internal staff bereavement/celebrations.
-- 968-: TRAVELLING ALLOWANCE -> Fixed daily per diem / outstation travel allowances.
-- 615-0000: CARRIAGE INWARDS (for forwarder only) -> Port customs clearance, shipping freight, forwarder handling charges.
-- 959-0001: UPKEEP OF HARDWARE -> Computer, monitor, printer, server, POS terminal repairs, RAM/SSD upgrades, mouse/keyboard replacements.
-- 906-0001: UPKEEP OF MOTOR VEHICLE (for van only) -> Service, engine oil, tires, maintenance strictly for company delivery vans.
-- 918-0000: UPKEEP OF OFFICE -> Office aircond maintenance, plumbing, electrical repairs, office cleaning supplies.
-- 924-: WAGES / OVERTIME -> Official staff overtime claims or temporary labor pay slips.
-- 909-0000: TELEPHONE CHARGES -> Telco bills (Maxis, CelcomDigi, Unifi Mobile, U Mobile), office landlines.
-- 952-0001: TRANSPORTATION (Delivery Expenses) -> Lalamove, Borzo, dispatch runners, dedicated third-party logistics dispatch.
-- 617-0001: PACKING MATERIAL - BOX -> Corrugated cartons, mailer cartons, standard shipping boxes.
-- 617-0002: PACKING MATERIAL - BAG / PLASTIC BAG -> Retail plastic bags, branded carrier bags, poly mailers.
-- 617-0003: PACKING MATERIAL - OTHERS EG. BUBBLE WRAP -> Bubble wrap, OPP tape, stretch film, fragile stickers, strapping bands.
-- OTHERS: OTHERS (Requires Remark) -> Miscellaneous items strictly outside the standard categories.
+---
 
-Strict Extraction & Parsing Rules:
-1. Multi-Item Splitting: If a receipt from a single vendor contains items spanning multiple accounts (e.g. supermarket receipt with pantry coffee 926-0000 and stationery pens 910-0000), split them into separate claim rows.
-2. Fuel Splitting: For petrol station receipts, separate fuel purchases (920-0000) from convenience store snacks or car wash items. Fuel goes to 920-0000, food/water goes to 926-0000 (Staff Welfare) or OTHERS.
-3. Accommodation Specifics: When mapping to 923-0000, determine the state from the hotel address and populate the field as "ACCOMMODATION - STATE: [State Name]" (e.g., "ACCOMMODATION - STATE: PENANG", "ACCOMMODATION - STATE: TERENGGANU").
-4. Packing Materials Nuance: Carefully distinguish cardboard boxes (617-0001), plastic carrier bags (617-0002), and cushioning materials like tape/bubble wrap (617-0003).
-5. Currency & Totals: All amounts must be rounded to two decimal places in Malaysian Ringgit (RM). Extract SST/Service Tax and include it proportionally or note it in the remark.
-6. Audit Flags: Identify any warnings (e.g. missing date, tax discrepancy, blurry text, weekend personal items, missing hotel state, lack of merchant registration SSM/tax ID).
+## EMO Book Services Official Account Codes (COA)
+
+Map every receipt item strictly to one of the following official company codes:
+
+- **400-00**: CASH PURCHASE (for book / resell only) — Direct purchase of books, titles, or merchandise intended for retail/resale.
+- **923-0000**: ACCOMODATION - STATE: — Hotels, lodging, and stay during business trips. You must identify and append the state name (e.g., \`ACCOMODATION - STATE: PENANG\`).
+- **928-0000**: COURIER CHARGES — Commercial parcel couriers (e.g., GDEX, J&T, DHL, Ninja Van).
+- **919-0000**: ENTERTAINMENT — Business dining, client meals, catering, coffee/refreshments for guests or business meetings.
+- **966-0002**: SPONSORSHIP OTHERS - FOR: — Company-sponsored events, donations, external sponsorships. You must append the purpose.
+- **913-0000**: EXHIBITION, ROAD SHOW & PROMOTION — Booth rentals, promotional banners, flyers, marketing displays.
+- **946-0000**: RECRUITMENT EXPENSES — Job advertisements, recruitment agency charges, interview expenses.
+- **939-0000**: LICENSE & REGISTRATION FEE — SSM renewal, local council licensing, regulatory fees.
+- **940-**: MEDICAL FEE — Clinic consultations, outpatient treatments, prescription medicine.
+- **920-0000**: PETROL-RON95/DIESEL — Vehicle fuel receipts (Petronas, Shell, BHP, Caltex, Petron).
+- **921-0001**: PARKING — Ticketed car parks, parking meter apps, coupon parking.
+- **921-0002**: TOLL — Touch 'n Go reloads, highway toll receipts, RFID statements.
+- **910-0000**: PRINTING & STATIONERY — Office stationery, printing paper, pens, photocopy charges.
+- **912-0000**: POSTAGE & STAMP — Pos Malaysia postal stamps, standard postage mail.
+- **905-0001**: TRAVELLING EXPENSES - GRAB, PUBLIC TRANSPORT — Grab rides, LRT, MRT, Monorail, airport bus, public transit.
+- **905-0002**: TRAVELLING EXPENSES - LOCAL — Intercity travel, domestic flights, ETS train tickets, interstate buses.
+- **922-**: ATTENDANCE ALLOWANCE — Monthly attendance allowance claims.
+- **925-0000**: STAFF ALLOWANCE — Standard staff allowances.
+- **926-0000**: STAFF WELFARE — Staff pantry supplies, pantry drinks/snacks, first aid supplies.
+- **968-**: TRAVELLING ALLOWANCE — Daily per diem / outstation travel allowances.
+- **615-0000**: CARRIAGE INWARDS (for forwarder only) — Freight charges, forwarder clearing fees, port handling fees.
+- **959-0001**: UPKEEP OF HARDWARE — IT equipment repair, PC components, cables, mouse, keyboard replacements.
+- **906-0001**: UPKEEP OF MOTOR VEHICLE (for van only) — Maintenance, engine servicing, van tires, van repairs strictly for company vans.
+- **918-0000**: UPKEEP OF OFFICE — Air-conditioning service, electrical, plumbing, office maintenance/repairs.
+- **924-**: WAGES/OVERTIME — Overtime claims, temporary helper pay.
+- **909-0000**: TELEPHONE CHARGES — Mobile bills, telco top-ups, office telephone charges.
+- **952-0001**: TRANSPORTATION (Delivery Expenses) — Lalamove, dispatch riders, ad-hoc parcel delivery fees.
+- **617-0001**: PACKING MATERIAL - BOX — Packing cartons, paper boxes, shipping cartons.
+- **617-0002**: PACKING MATERIAL - BAG/ PLASTIC BAG — Carrier bags, plastic bags, flyer poly-mailers.
+- **617-0003**: PACKING MATERIAL - OTHERS EG. BUBBLE WRAP — Bubble wrap, OPP packaging tape, stretch film.
+- **OTHERS**: OTHERS — Expenses that genuinely do not fit any of the above (requires explicit justification in Remark).
+
+---
+
+## Extraction & Splitting Rules
+
+1. **Auto-Split Composite Receipts**: If a receipt includes purchases belonging to different categories (for example, a supermarket receipt with pantry coffee and stationery files), split them into separate line items with their respective codes.
+2. **Petrol Station Separation**: On petrol station receipts, isolate fuel purchases (\`920-0000\`) from snacks, beverages, or car wash purchases.
+3. **Accommodation State Identification**: When code \`923-0000\` is used, extract the location from the receipt and format the detail as \`ACCOMODATION - STATE: [STATE NAME]\` (e.g., \`ACCOMODATION - STATE: SELANGOR\`).
+4. **Currency & Totals**: All amounts must be parsed in Malaysian Ringgit (\`RM\`) to two decimal places.
+5. **Audit Notes Control**: 
+   - Keep \`audit_notes\` strictly as an empty array \`[]\` if the receipt is legible, calculation math matches, and codes are successfully mapped so that clean submissions auto-verify.
+   - Only append a warning string into \`audit_notes\` if there is a critical anomaly (e.g., blurry image text, missing total, or calculation mismatch) so the Accounts Admin can easily review it.
+
+---
+
+## JSON Output Structure
+
+Respond exclusively with valid JSON conforming to this schema:
+
+{
+  "receipt_info": {
+    "merchant_name": "string",
+    "merchant_ssm_or_tax_no": "string or null",
+    "receipt_no": "string or null",
+    "date": "YYYY-MM-DD",
+    "total_amount_rm": 0.00
+  },
+  "claim_items": [
+    {
+      "code": "string",
+      "details": "string",
+      "amount_rm": 0.00,
+      "remark": "string"
+    }
+  ],
+  "claim_total_rm": 0.00,
+  "audit_notes": []
+}
 `;
+
+const AUDIT_RESPONSE_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    receipt_info: {
+      type: Type.OBJECT,
+      properties: {
+        merchant_name: { type: Type.STRING },
+        merchant_ssm_or_tax_no: { type: Type.STRING },
+        receipt_no: { type: Type.STRING },
+        date: { type: Type.STRING, description: 'YYYY-MM-DD' },
+        total_amount_rm: { type: Type.NUMBER, description: 'Grand total in RM' },
+      },
+      required: ['merchant_name', 'date', 'total_amount_rm'],
+    },
+    claim_items: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          code: { type: Type.STRING, description: 'Official EMO account code (e.g., 920-0000, 400-00)' },
+          details: { type: Type.STRING, description: 'Itemized details and state if accommodation' },
+          amount_rm: { type: Type.NUMBER, description: 'Amount in Malaysian Ringgit' },
+          remark: { type: Type.STRING, description: 'Audit remark or policy notes' },
+        },
+        required: ['code', 'details', 'amount_rm', 'remark'],
+      },
+    },
+    claim_total_rm: { type: Type.NUMBER },
+    audit_notes: {
+      type: Type.ARRAY,
+      items: { type: Type.STRING },
+      description: 'Empty array [] if no anomalies, only populated if true anomaly detected',
+    },
+  },
+  required: ['receipt_info', 'claim_items', 'claim_total_rm', 'audit_notes'],
+};
 
 // Audit endpoint
 app.post('/api/audit-receipt', async (req, res) => {
@@ -87,7 +158,7 @@ app.post('/api/audit-receipt', async (req, res) => {
     const cleanBase64 = imageBase64.replace(/^data:[a-zA-Z0-9\/+-]+;base64,/, '');
 
     const userPrompt = claimantNotes
-      ? `Audit this Malaysian business receipt document. Claimant provided notes: "${claimantNotes}". Extract all items, enforce EMO account code mapping and splitting rules, and check for any compliance or calculation issues.`
+      ? `Audit this Malaysian business receipt document. Claimant notes: "${claimantNotes}". Extract all items, enforce EMO account code mapping and splitting rules, and check for any compliance or calculation issues.`
       : `Audit this Malaysian business receipt document. Extract all items, enforce EMO account code mapping and splitting rules, and check for any compliance or calculation issues.`;
 
     const response = await ai.models.generateContent({
@@ -110,45 +181,9 @@ app.post('/api/audit-receipt', async (req, res) => {
       ],
       config: {
         systemInstruction: AUDIT_SYSTEM_INSTRUCTION,
+        temperature: 0.0,
         responseMimeType: 'application/json',
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            receipt_summary: {
-              type: Type.OBJECT,
-              properties: {
-                merchant_name: { type: Type.STRING },
-                merchant_ssm_or_tax_no: { type: Type.STRING },
-                invoice_receipt_no: { type: Type.STRING },
-                date: { type: Type.STRING, description: 'YYYY-MM-DD format' },
-                currency: { type: Type.STRING, description: 'MYR' },
-                receipt_subtotal: { type: Type.NUMBER },
-                tax_sst: { type: Type.NUMBER },
-                receipt_grand_total: { type: Type.NUMBER },
-              },
-              required: ['merchant_name', 'date', 'currency', 'receipt_grand_total'],
-            },
-            claim_entries: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  code: { type: Type.STRING, description: 'Official EMO account code (e.g., 920-0000, 400-00)' },
-                  details: { type: Type.STRING, description: 'Details including state for accommodation if applicable' },
-                  amount_rm: { type: Type.NUMBER, description: 'Amount in Malaysian Ringgit' },
-                  remark: { type: Type.STRING, description: 'Audit remark or tax details' },
-                },
-                required: ['code', 'details', 'amount_rm', 'remark'],
-              },
-            },
-            claim_total_rm: { type: Type.NUMBER },
-            audit_flags: {
-              type: Type.ARRAY,
-              items: { type: Type.STRING },
-            },
-          },
-          required: ['receipt_summary', 'claim_entries', 'claim_total_rm', 'audit_flags'],
-        },
+        responseSchema: AUDIT_RESPONSE_SCHEMA,
       },
     });
 
@@ -159,28 +194,41 @@ app.post('/api/audit-receipt', async (req, res) => {
 
     const auditData = JSON.parse(rawText);
 
+    // Ensure audit_notes is initialized
+    if (!Array.isArray(auditData.audit_notes)) {
+      auditData.audit_notes = [];
+    }
+
     // Sanitize and perform backend accounting cross-verification
-    if (auditData.claim_entries && Array.isArray(auditData.claim_entries)) {
-      // Recalculate sum of claim items
-      const calculatedSum = auditData.claim_entries.reduce(
+    if (auditData.claim_items && Array.isArray(auditData.claim_items)) {
+      const calculatedSum = auditData.claim_items.reduce(
         (sum: number, item: { amount_rm: number }) => sum + (Number(item.amount_rm) || 0),
         0
       );
       const roundedClaimTotal = Math.round(calculatedSum * 100) / 100;
       auditData.claim_total_rm = roundedClaimTotal;
 
-      const grandTotal = Number(auditData.receipt_summary?.receipt_grand_total) || 0;
+      const grandTotal = Number(auditData.receipt_info?.total_amount_rm) || 0;
       const difference = Math.abs(roundedClaimTotal - grandTotal);
 
+      // Rule 5: Only append a string into audit_notes if there is a true anomaly
       if (difference > 0.05) {
-        if (!auditData.audit_flags) auditData.audit_flags = [];
-        auditData.audit_flags.push(
+        auditData.audit_notes.push(
           `Calculation Discrepancy: Sum of claim items (RM ${roundedClaimTotal.toFixed(
             2
-          )}) does not match receipt grand total (RM ${grandTotal.toFixed(2)}). Difference: RM ${difference.toFixed(2)}.`
+          )}) does not match receipt total (RM ${grandTotal.toFixed(2)}). Variance: RM ${difference.toFixed(2)}.`
         );
       }
     }
+
+    // Populate backwards-compatible alias fields
+    auditData.receipt_summary = {
+      ...auditData.receipt_info,
+      invoice_receipt_no: auditData.receipt_info.receipt_no,
+      receipt_grand_total: auditData.receipt_info.total_amount_rm,
+    };
+    auditData.claim_entries = auditData.claim_items;
+    auditData.audit_flags = auditData.audit_notes;
 
     return res.json({ success: true, data: auditData });
   } catch (error: any) {
@@ -190,6 +238,52 @@ app.post('/api/audit-receipt', async (req, res) => {
       error: error?.message || 'An error occurred while auditing receipt.',
     });
   }
+});
+
+// Get Google AI Studio System Prompt and settings configuration
+app.get('/api/system-prompt', (req, res) => {
+  res.json({
+    model: 'gemini-3.8-flash',
+    temperature: 0.0,
+    responseMimeType: 'application/json',
+    systemInstruction: AUDIT_SYSTEM_INSTRUCTION,
+    responseSchema: {
+      type: 'OBJECT',
+      properties: {
+        receipt_info: {
+          type: 'OBJECT',
+          properties: {
+            merchant_name: { type: 'STRING' },
+            merchant_ssm_or_tax_no: { type: 'STRING' },
+            receipt_no: { type: 'STRING' },
+            date: { type: 'STRING', description: 'YYYY-MM-DD' },
+            total_amount_rm: { type: 'NUMBER', description: 'Grand total in RM' },
+          },
+          required: ['merchant_name', 'date', 'total_amount_rm'],
+        },
+        claim_items: {
+          type: 'ARRAY',
+          items: {
+            type: 'OBJECT',
+            properties: {
+              code: { type: 'STRING', description: 'Official EMO account code' },
+              details: { type: 'STRING', description: 'Itemized details and state if accommodation' },
+              amount_rm: { type: 'NUMBER', description: 'Amount in Malaysian Ringgit' },
+              remark: { type: 'STRING', description: 'Audit remark or policy notes' },
+            },
+            required: ['code', 'details', 'amount_rm', 'remark'],
+          },
+        },
+        claim_total_rm: { type: 'NUMBER' },
+        audit_notes: {
+          type: 'ARRAY',
+          items: { type: 'STRING' },
+          description: 'Empty array [] if no anomalies, only populated if true anomaly detected',
+        },
+      },
+      required: ['receipt_info', 'claim_items', 'claim_total_rm', 'audit_notes'],
+    },
+  });
 });
 
 // Health check endpoint
