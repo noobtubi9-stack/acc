@@ -98,13 +98,13 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Right Side: Identity Switcher & Claimant Controls */}
           <div className="flex flex-wrap items-center gap-2 sm:gap-3">
             
-            {/* When Authenticated: Profile Badge & Logout Button */}
+            {/* When Authenticated: Streamlined Profile Area with Single Prominent Logout Button */}
             {isAuthenticated ? (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center bg-slate-800/90 hover:bg-slate-800 border border-slate-700/80 rounded-2xl p-1 shadow-sm transition">
                 {onOpenAuthModal && (
                   <button
                     onClick={onOpenAuthModal}
-                    className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700/80 border border-slate-700/80 text-xs transition group shadow-sm"
+                    className="flex items-center gap-2.5 px-2.5 py-1.5 rounded-xl hover:bg-slate-700/60 text-xs transition group text-left"
                     title="EMO Corporate Authentication & Identity Switcher"
                   >
                     <div className="relative">
@@ -135,17 +135,19 @@ export const Header: React.FC<HeaderProps> = ({
                         </span>
                       </div>
                       <span className="text-[10px] text-slate-400 group-hover:text-amber-400 flex items-center gap-1 transition">
-                        <Key className="w-2.5 h-2.5" /> Portal Auth &bull; Switch
+                        <Key className="w-2.5 h-2.5" /> Switch Account
                       </span>
                     </div>
                   </button>
                 )}
 
-                {/* Prominent Logout Button */}
+                <div className="h-6 w-px bg-slate-700/80 mx-0.5" />
+
+                {/* Single Prominent Logout Button located directly in user profile area */}
                 {onLogout && (
                   <button
                     onClick={onLogout}
-                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 hover:text-rose-200 border border-rose-500/30 text-xs font-bold transition shadow-sm group"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 hover:text-rose-200 border border-rose-500/30 hover:border-rose-500/50 text-xs font-bold transition shadow-sm group"
                     title="Sign Out / Logout of current workstation session"
                   >
                     <LogOut className="w-3.5 h-3.5 text-rose-400 group-hover:-translate-x-0.5 transition-transform" />
@@ -319,29 +321,6 @@ export const Header: React.FC<HeaderProps> = ({
             >
               <HelpCircle className="w-4 h-4" />
             </button>
-
-            <div className="h-4 w-px bg-slate-800 hidden sm:block" />
-
-            {/* Sub-nav quick Logout/Login */}
-            {isAuthenticated ? (
-              <button
-                onClick={onLogout}
-                className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-md text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/30 text-xs font-semibold transition"
-                title="Sign out of EMO Book Services workstation"
-              >
-                <LogOut className="w-3.5 h-3.5 text-rose-400" />
-                <span>Logout</span>
-              </button>
-            ) : (
-              <button
-                onClick={onOpenAuthModal}
-                className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold transition shadow-sm"
-                title="Sign In to EMO Book Services"
-              >
-                <LogIn className="w-3.5 h-3.5" />
-                <span>Login</span>
-              </button>
-            )}
           </div>
 
         </div>
